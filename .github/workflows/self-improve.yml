@@ -1,0 +1,137 @@
+name: Self-Improve
+
+on:
+  schedule:
+    - cron: '0 3 * * 1'  # Monday 3am UTC, after weekly review at 1am
+  workflow_dispatch:
+
+jobs:
+  implement:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Python dependencies
+        run: pip install -r requirements.txt
+
+      - name: Fetch pending recommendations
+        id: fetch
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+        run: |
+          python3 << 'PYEOF'
+          import json, os
+          from supabase import create_client
+          client = create_client(os.environ["SUPABASE_URL"], os.environ["SUPABASE_KEY"])
+          resp = (
+              client.table("recommendations")
+              .select("*")
+              .eq("category", "code_change")
+              .eq("status", "pending")
+              .order("created_at")
+              .limit(3)
+              .execute()
+          )
+          recs = resp.data
+          print(f"Found {len(recs)} pending code recommendations")
+          with open("/tmp/pending_recs.json", "w") as f:
+              json.dump(recs, f, indent=2)
+          with open(os.environ["GITHUB_OUTPUT"], "a") as f:
+              f.write(f"count={len(recs)}\n")
+          PYEOF
+
+      - name: Install Claude Code
+        if: steps.fetch.outputs.count != '0'
+        run: npm install -g @anthropic-ai/claude-code
+
+      - name: Implement recommendations
+        if: steps.fetch.outputs.count != '0'
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          claude -p "You are implementing code improvements for the qd-engine trading system.
+
+          SAFETY RULES (MUST FOLLOW):
+          - Do NOT modify any files in .github/workflows/
+          - Do NOT modify any file containing secrets, API keys, or credentials
+          - Do NOT modify tests to make them pass - fix the actual source code
+          - Do NOT add new dependencies to requirements.txt
+          - Keep changes minimal and focused on the recommendation
+
+          First, read the file /tmp/pending_recs.json to see the recommendations to implement.
+          Then implement each one by reading the relevant source files and making targeted changes.
+
+          For each recommendation:
+          1. Read the relevant files to understand context
+          2. Make the minimal code changes needed
+          3. Verify your changes are consistent with the codebase style" \
+            --allowedTools "Read,Write,Edit,Glob,Grep" \
+            --max-turns 30
+
+      - name: Run tests
+        if: steps.fetch.outputs.count != '0'
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          ALPACA_ACCT1_PAPER_KEY: ${{ secrets.ALPACA_ACCT1_PAPER_KEY }}
+          ALPACA_ACCT1_PAPER_SECRET: ${{ secrets.ALPACA_ACCT1_PAPER_SECRET }}
+          ALPACA_ACCT2_PAPER_KEY: ${{ secrets.ALPACA_ACCT2_PAPER_KEY }}
+          ALPACA_ACCT2_PAPER_SECRET: ${{ secrets.ALPACA_ACCT2_PAPER_SECRET }}
+          ALPACA_ACCT3_PAPER_KEY: ${{ secrets.ALPACA_ACCT3_PAPER_KEY }}
+          ALPACA_ACCT3_PAPER_SECRET: ${{ secrets.ALPACA_ACCT3_PAPER_SECRET }}
+          TRADING_MODE: paper
+        run: python -m pytest tests/ -v
+
+      - name: Commit and push to main
+        if: steps.fetch.outputs.count != '0'
+        run: |
+          git config user.name "qd-engine-bot"
+          git config user.email "bot@qd-engine"
+          git add -A
+          if git diff --staged --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "auto: implement monthly review recommendations"
+            git push origin main
+          fi
+
+      - name: Update recommendation status
+        if: always() && steps.fetch.outputs.count != '0'
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+        run: |
+          if [ "${{ job.status }}" = "success" ]; then
+            STATUS="implemented"
+          else
+            STATUS="failed"
+          fi
+          python3 << PYEOF
+          import json, os
+          from datetime import datetime, timezone
+          from supabase import create_client
+          client = create_client(os.environ["SUPABASE_URL"], os.environ["SUPABASE_KEY"])
+          with open("/tmp/pending_recs.json") as f:
+              recs = json.load(f)
+          status = "$STATUS"
+          for rec in recs:
+              updates = {"status": status}
+              if status == "implemented":
+                  updates["implemented_at"] = datetime.now(timezone.utc).isoformat()
+              client.table("recommendations").update(updates).eq("id", rec["id"]).execute()
+              print(f"Marked recommendation {rec['id']} as {status}")
+          PYEOF

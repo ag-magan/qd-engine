@@ -150,7 +150,10 @@ Was the thesis correct? Classify and provide a lesson."""
         return self.claude.analyze(
             system_prompt=EVALUATION_SYSTEM,
             user_prompt=prompt,
+            model="sonnet",
             analysis_type="thesis_evaluation",
+            thinking=True,
+            thinking_budget=4096,
             max_tokens=1024,
         )
 

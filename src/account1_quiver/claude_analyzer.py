@@ -56,6 +56,7 @@ class ClaudeAnalyzer:
         result = self.claude.analyze(
             system_prompt=SYSTEM_PROMPT,
             user_prompt=context,
+            model="sonnet",
             analysis_type="signal_evaluation",
         )
 

@@ -90,7 +90,10 @@ Analyze these candidates and provide your pre-market briefing as JSON."""
         result = self.claude.analyze(
             system_prompt=BRIEFING_SYSTEM,
             user_prompt=prompt,
+            model="sonnet",
             analysis_type="premarket_briefing",
+            thinking=True,
+            thinking_budget=4096,
         )
 
         if result:
@@ -115,4 +118,4 @@ Analyze these candidates and provide your pre-market briefing as JSON."""
             f"\nShould we take this trade?"
         )
 
-        return self.claude.quick_decision(prompt) or {}
+        return self.claude.quick_decision(prompt, model="haiku") or {}

@@ -6,6 +6,7 @@ from datetime import datetime
 import pytz
 
 from src.shared.alerter import HealthTracker
+from src.shared.database import Database
 from src.shared.risk_manager import RiskManager
 from src.account2_daytrader.config import (
     ACCOUNT_ID, TRADING_START, NO_NEW_TRADES, FORCE_CLOSE, EOD_REVIEW,
@@ -27,7 +28,60 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 ET = pytz.timezone("US/Eastern")
 
-STRATEGIES = [MomentumBreakout(), MeanReversion(), GapFill(), VWAPBounce()]
+# Map strategy names to classes
+STRATEGY_CLASSES = {
+    "momentum_breakout": MomentumBreakout,
+    "gap_fill": GapFill,
+    "mean_reversion": MeanReversion,
+    "vwap_bounce": VWAPBounce,
+}
+
+
+def load_strategies() -> list:
+    """Load strategies from DB definitions, falling back to hardcoded defaults.
+
+    Active strategy_definitions rows control which strategies run and with what parameters.
+    If no DB rows exist, all hardcoded strategies run with default params.
+    """
+    try:
+        db = Database()
+        resp = (
+            db.client.table("strategy_definitions")
+            .select("*")
+            .eq("account_id", ACCOUNT_ID)
+            .eq("is_active", True)
+            .execute()
+        )
+        defs = resp.data
+    except Exception:
+        defs = []
+
+    if not defs:
+        logger.info("No strategy definitions in DB, using hardcoded defaults")
+        return [MomentumBreakout(), MeanReversion(), GapFill(), VWAPBounce()]
+
+    strategies = []
+    for defn in defs:
+        name = defn["name"]
+        cls = STRATEGY_CLASSES.get(name)
+        if cls is None:
+            logger.warning(f"Unknown strategy name in DB: {name}, skipping")
+            continue
+
+        overrides = {
+            "exit_rules": defn.get("exit_rules") or {},
+            "filters": defn.get("filters") or {},
+            "position_rules": defn.get("position_rules") or {},
+        }
+        strategies.append(cls(db_overrides=overrides))
+        logger.info(f"Loaded strategy from DB: {name} (id={defn['id']})")
+
+    if not strategies:
+        logger.warning("All DB strategies unrecognized, falling back to defaults")
+        return [MomentumBreakout(), MeanReversion(), GapFill(), VWAPBounce()]
+
+    logger.info(f"Active strategies: {[s.name for s in strategies]}")
+    return strategies
 
 
 def get_et_now():
@@ -75,7 +129,8 @@ def run_premarket():
         return {}, []
 
 
-def run_intraday_cycle(watchlist: list, market_context: dict, executor: DayTraderExecutor):
+def run_intraday_cycle(watchlist: list, market_context: dict,
+                       executor: DayTraderExecutor, strategies: list):
     """Single intraday scan and trade cycle."""
     scanner = Scanner()
     adaptive = AdaptiveEngine()
@@ -92,10 +147,12 @@ def run_intraday_cycle(watchlist: list, market_context: dict, executor: DayTrade
 
     # Evaluate each candidate against strategies
     for candidate in candidates:
-        for strategy in STRATEGIES:
+        for strategy in strategies:
             setup = strategy.evaluate(candidate)
             if setup:
-                # Quick Claude check if confidence is borderline
+                min_conf = strategy.get_config_value({}, "confidence_minimum", 60)
+                if setup["confidence"] < min_conf:
+                    continue
                 if setup["confidence"] < 70:
                     analyzer = DayTraderClaudeAnalyzer()
                     try:
@@ -148,6 +205,9 @@ def run_loop():
     logger.info("=== Day Trader: Starting Market Hours Loop ===")
 
     try:
+        # Load strategies from DB (or defaults)
+        strategies = load_strategies()
+
         # Phase 1: Pre-market scan
         briefing, watchlist = run_premarket()
         market_context = briefing or {}
@@ -172,7 +232,7 @@ def run_loop():
             if now < no_new_trades_time:
                 # Scan for new setups
                 try:
-                    run_intraday_cycle(watchlist, market_context, executor)
+                    run_intraday_cycle(watchlist, market_context, executor, strategies)
                 except Exception as e:
                     tracker.add_warning(f"Intraday cycle error: {e}", service="Scanner")
 
@@ -217,8 +277,9 @@ def run():
     if mode == "premarket":
         run_premarket()
     elif mode == "intraday":
+        strategies = load_strategies()
         executor = DayTraderExecutor()
-        run_intraday_cycle([], {}, executor)
+        run_intraday_cycle([], {}, executor, strategies)
     elif mode == "eod":
         run_eod()
     elif mode == "loop":

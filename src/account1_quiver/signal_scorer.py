@@ -13,11 +13,63 @@ logger = logging.getLogger(__name__)
 
 
 class SignalScorer:
-    """Composite scoring with convergence bonuses and adaptive weights."""
+    """Composite scoring with convergence bonuses and adaptive weights.
+
+    Reads scoring rules from the database when available,
+    falls back to hardcoded constants.
+    """
 
     def __init__(self):
         self.db = Database()
         self.weights = self.db.get_signal_weights(ACCOUNT_ID)
+        self.convergence_multipliers, self.combo_bonuses = self._load_scoring_rules()
+
+    def _load_scoring_rules(self) -> tuple:
+        """Load scoring rules from DB, falling back to hardcoded defaults."""
+        convergence = dict(CONVERGENCE_MULTIPLIERS)
+        combos = dict(COMBO_BONUSES)
+
+        try:
+            resp = (
+                self.db.client.table("scoring_rules")
+                .select("*")
+                .eq("account_id", ACCOUNT_ID)
+                .eq("is_active", True)
+                .execute()
+            )
+            rules = resp.data
+        except Exception:
+            logger.debug("No scoring rules in DB, using hardcoded defaults")
+            return convergence, combos
+
+        if not rules:
+            return convergence, combos
+
+        # Build from DB rules
+        db_convergence = {}
+        db_combos = {}
+
+        for rule in rules:
+            config = rule.get("rule_config", {})
+            if rule["rule_type"] == "convergence_multiplier":
+                count = config.get("source_count")
+                mult = config.get("multiplier")
+                if count is not None and mult is not None:
+                    db_convergence[int(count)] = float(mult)
+            elif rule["rule_type"] == "source_combo_bonus":
+                combo = config.get("combo", [])
+                bonus = config.get("bonus")
+                if combo and bonus is not None:
+                    db_combos[frozenset(combo)] = float(bonus)
+
+        if db_convergence:
+            convergence = db_convergence
+            logger.info(f"Loaded {len(db_convergence)} convergence multipliers from DB")
+        if db_combos:
+            combos = db_combos
+            logger.info(f"Loaded {len(db_combos)} combo bonuses from DB")
+
+        return convergence, combos
 
     def score_signals(self, signals: list) -> list:
         """Score individual signals and apply convergence bonuses.
@@ -81,8 +133,8 @@ class SignalScorer:
 
         # Apply convergence multiplier
         unique_sources = len(sources)
-        if unique_sources in CONVERGENCE_MULTIPLIERS:
-            multiplier = CONVERGENCE_MULTIPLIERS[unique_sources]
+        if unique_sources in self.convergence_multipliers:
+            multiplier = self.convergence_multipliers[unique_sources]
             total_score *= multiplier
             logger.debug(
                 f"{symbol}: {unique_sources} sources, "
@@ -90,7 +142,7 @@ class SignalScorer:
             )
 
         # Apply combo bonuses
-        for combo_sources, bonus in COMBO_BONUSES.items():
+        for combo_sources, bonus in self.combo_bonuses.items():
             if combo_sources.issubset(sources):
                 total_score *= bonus
                 logger.debug(f"{symbol}: combo bonus {bonus}x for {combo_sources}")

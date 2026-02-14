@@ -76,11 +76,12 @@ class DecisionEngine:
 
     def make_daily_decisions(self, briefing: str) -> dict:
         """Morning decision: Claude reviews everything and decides what to trade."""
-        result = self.claude.analyze(
+        result = self.claude.strategic_review(
             system_prompt=DECISION_SYSTEM,
             user_prompt=briefing,
+            model="opus",
+            effort="high",
             analysis_type="daily_decision",
-            max_tokens=4096,
         )
 
         if result:
@@ -116,6 +117,7 @@ class DecisionEngine:
         result = self.claude.analyze(
             system_prompt=MONITOR_SYSTEM,
             user_prompt=portfolio_summary,
+            model="haiku",
             analysis_type="position_monitor",
             max_tokens=2048,
         )
