@@ -20,6 +20,12 @@ SIGNAL_SOURCES = {
         "enabled": True,
         "min_contract_value": 10_000_000,
     },
+    "gov_contracts_all": {
+        "endpoint": "/live/govcontractsall",
+        "signal_type": "gov_contract_all",
+        "enabled": True,
+        "min_contract_value": 10_000_000,
+    },
     "lobbying": {
         "endpoint": "/live/lobbying",
         "signal_type": "lobbying_change",
@@ -68,6 +74,7 @@ BASE_SCORES = {
     "house_trading": 30,
     "senate_trading": 30,
     "gov_contracts": 25,
+    "gov_contracts_all": 25,
     "lobbying": 20,
     "off_exchange": 10,
     "flights": 10,

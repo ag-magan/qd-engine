@@ -84,5 +84,6 @@ CONVERGENCE_MULTIPLIERS = {
 # Special combo bonuses
 COMBO_BONUSES = {
     frozenset(["lobbying", "gov_contracts"]): 1.5,
+    frozenset(["lobbying", "gov_contracts_all"]): 1.5,
     frozenset(["house_trading", "senate_trading"]): 1.4,
 }

@@ -26,6 +26,7 @@ class SignalGenerator:
             "senate_trading": self._process_senate_trading,
             "insider": self._process_insiders,
             "gov_contracts": self._process_gov_contracts,
+            "gov_contracts_all": self._process_gov_contracts_all,
             "lobbying": self._process_lobbying,
             "off_exchange": self._process_off_exchange,
             "flights": self._process_flights,
@@ -204,6 +205,48 @@ class SignalGenerator:
                 "account_id": ACCOUNT_ID,
                 "source": "gov_contracts",
                 "signal_type": "gov_contract",
+                "symbol": ticker.upper(),
+                "direction": "buy",
+                "strength": round(strength, 2),
+                "signal_role": "primary",
+                "raw_data": contract,
+            }
+            signals.append(signal)
+
+        return signals
+
+    def _process_gov_contracts_all(self) -> list:
+        """Process all announced government contracts (broader dataset)."""
+        data = self.quiver.get_gov_contracts_all()
+        if not data:
+            return []
+
+        config = SIGNAL_SOURCES["gov_contracts_all"]
+        min_value = config.get("min_contract_value", 10_000_000)
+        signals = []
+
+        for contract in data:
+            ticker = contract.get("Ticker") or contract.get("ticker")
+            if not ticker:
+                continue
+
+            amount = self._parse_number(
+                contract.get("Amount") or contract.get("amount", 0)
+            )
+            if amount < min_value:
+                continue
+
+            # Dedup against both gov_contracts and gov_contracts_all
+            if self.db.signal_exists(ACCOUNT_ID, "gov_contracts_all", ticker.upper(), "gov_contract_all"):
+                continue
+            if self.db.signal_exists(ACCOUNT_ID, "gov_contracts", ticker.upper(), "gov_contract"):
+                continue
+
+            strength = min(amount / 100_000_000, 1.0)
+            signal = {
+                "account_id": ACCOUNT_ID,
+                "source": "gov_contracts_all",
+                "signal_type": "gov_contract_all",
                 "symbol": ticker.upper(),
                 "direction": "buy",
                 "strength": round(strength, 2),

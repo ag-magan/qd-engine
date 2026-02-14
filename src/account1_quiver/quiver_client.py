@@ -104,6 +104,10 @@ class QuiverClient:
         """Get recent Senate trades (Tier 1)."""
         return self._get("/live/senatetrading")
 
+    def get_gov_contracts_all(self) -> Optional[list]:
+        """Get all announced government contracts (Tier 1)."""
+        return self._get("/live/govcontractsall")
+
     def get_off_exchange(self) -> Optional[list]:
         """Get off-exchange / dark pool short volume data (Tier 1)."""
         return self._get("/live/offexchange")
