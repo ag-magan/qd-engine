@@ -1,0 +1,157 @@
+import logging
+from datetime import datetime, timezone
+
+from src.shared.alpaca_client import AlpacaClient
+from src.shared.risk_manager import RiskManager
+from src.shared.database import Database
+from src.account1_quiver.config import ACCOUNT_ID
+
+logger = logging.getLogger(__name__)
+
+
+class Executor:
+    """Execute trades for Account 1 against Alpaca."""
+
+    def __init__(self):
+        self.alpaca = AlpacaClient(ACCOUNT_ID)
+        self.risk = RiskManager(ACCOUNT_ID)
+        self.db = Database()
+
+    def execute_signals(self, analyzed_signals: list) -> list:
+        """Execute trades for signals that pass all checks."""
+        if not self.alpaca.is_market_open():
+            logger.warning("Market is closed. Skipping trade execution.")
+            return []
+
+        executed = []
+        for signal in analyzed_signals:
+            result = self._execute_single(signal)
+            if result:
+                executed.append(result)
+
+        logger.info(f"Executed {len(executed)}/{len(analyzed_signals)} trades")
+        return executed
+
+    def _execute_single(self, signal: dict) -> dict:
+        """Execute a single trade after risk checks."""
+        symbol = signal["symbol"]
+        direction = signal.get("decision", signal.get("direction", "buy"))
+
+        if direction == "skip":
+            self._record_skip(signal, "Claude recommended skip")
+            return None
+
+        # Calculate position size
+        confidence = signal.get("confidence", 50)
+        size_pct = signal.get("position_size_pct", 0.5)
+        position_size = self.risk.calculate_position_size(symbol, confidence)
+        position_size *= size_pct
+
+        # Enforce minimum position size
+        if position_size < 1.0:
+            self._record_skip(signal, f"Position size too small: ${position_size:.2f}")
+            return None
+
+        # Risk check
+        can_trade, reason = self.risk.can_open_position(symbol, position_size)
+        if not can_trade:
+            self._record_skip(signal, reason)
+            return None
+
+        # Submit order
+        order = self.alpaca.submit_market_order(
+            symbol=symbol,
+            side=direction,
+            notional=position_size,
+        )
+
+        if not order:
+            self._record_skip(signal, "Order submission failed")
+            return None
+
+        # Record trade in DB
+        trade_record = {
+            "account_id": ACCOUNT_ID,
+            "symbol": symbol,
+            "side": direction,
+            "notional": round(position_size, 2),
+            "order_type": "market",
+            "alpaca_order_id": str(order.id),
+            "status": str(order.status),
+            "strategy": "quiver_composite",
+            "signal_id": signal.get("signal_id"),
+            "reasoning": signal.get("thesis", signal.get("reasoning", "")),
+        }
+        db_trade = self.db.insert_trade(trade_record)
+
+        logger.info(
+            f"Executed {direction} {symbol} for ${position_size:.2f} "
+            f"(confidence={confidence})"
+        )
+
+        return {
+            "trade": db_trade,
+            "order_id": str(order.id),
+            "symbol": symbol,
+            "side": direction,
+            "notional": position_size,
+        }
+
+    def _record_skip(self, signal: dict, reason: str) -> None:
+        """Record a skipped signal in the database."""
+        logger.info(f"Skipping {signal['symbol']}: {reason}")
+
+        # Update signal as not acted on
+        for raw_signal in signal.get("signals", [signal]):
+            if "id" in raw_signal:
+                self.db.client.table("signals").update(
+                    {"acted_on": False, "skip_reason": reason}
+                ).eq("id", raw_signal["id"]).execute()
+
+    def execute_rebalance(self, actions: list) -> list:
+        """Execute rebalancing trades."""
+        if not self.alpaca.is_market_open():
+            logger.warning("Market closed. Skipping rebalance.")
+            return []
+
+        working_capital = self.risk.get_working_capital()
+        invested = self.risk.get_invested_amount()
+        executed = []
+
+        for action in actions:
+            symbol = action["symbol"]
+            target_weight = action["target_weight"]
+            current_weight = action["current_weight"]
+
+            # Calculate adjustment
+            target_value = invested * target_weight
+            current_value = invested * current_weight
+            adjustment = target_value - current_value
+
+            if abs(adjustment) < 10:  # Skip tiny adjustments
+                continue
+
+            side = "buy" if adjustment > 0 else "sell"
+            notional = abs(adjustment)
+
+            order = self.alpaca.submit_market_order(
+                symbol=symbol, side=side, notional=notional
+            )
+
+            if order:
+                trade_record = {
+                    "account_id": ACCOUNT_ID,
+                    "symbol": symbol,
+                    "side": side,
+                    "notional": round(notional, 2),
+                    "order_type": "market",
+                    "alpaca_order_id": str(order.id),
+                    "status": str(order.status),
+                    "strategy": "rebalance",
+                    "reasoning": f"Rebalance: drift={action['drift']:.2%}",
+                }
+                self.db.insert_trade(trade_record)
+                executed.append(trade_record)
+
+        logger.info(f"Rebalance: executed {len(executed)}/{len(actions)} adjustments")
+        return executed

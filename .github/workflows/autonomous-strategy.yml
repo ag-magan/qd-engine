@@ -1,0 +1,56 @@
+name: Autonomous Strategy
+
+on:
+  schedule:
+    - cron: '0 15 * * 1-5'   # 10:00 AM ET - Morning decision
+    - cron: '0 18 * * 1-5'   # 1:00 PM ET - Midday monitor
+    - cron: '30 21 * * 1-5'  # 4:30 PM ET - EOD review
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'Run mode: decision, monitor, or eod'
+        required: false
+        default: 'decision'
+
+jobs:
+  run-autonomous:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Determine mode
+        id: mode
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "mode=${{ github.event.inputs.mode }}" >> $GITHUB_OUTPUT
+          else
+            HOUR=$(date -u +%H)
+            if [ "$HOUR" = "15" ]; then
+              echo "mode=decision" >> $GITHUB_OUTPUT
+            elif [ "$HOUR" = "18" ]; then
+              echo "mode=monitor" >> $GITHUB_OUTPUT
+            else
+              echo "mode=eod" >> $GITHUB_OUTPUT
+            fi
+          fi
+
+      - name: Run autonomous strategy
+        env:
+          ALPACA_ACCT3_PAPER_KEY: ${{ secrets.ALPACA_ACCT3_PAPER_KEY }}
+          ALPACA_ACCT3_PAPER_SECRET: ${{ secrets.ALPACA_ACCT3_PAPER_SECRET }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+          GMAIL_ADDRESS: ${{ secrets.GMAIL_ADDRESS }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          TRADING_MODE: paper
+        run: python -m src.account3_autonomous.main ${{ steps.mode.outputs.mode }}

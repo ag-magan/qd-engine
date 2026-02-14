@@ -1,0 +1,214 @@
+import logging
+from datetime import datetime, timezone
+
+from src.shared.alpaca_client import AlpacaClient
+from src.shared.risk_manager import RiskManager
+from src.shared.database import Database
+from src.account3_autonomous.config import ACCOUNT_ID
+from src.account3_autonomous.thesis_tracker import ThesisTracker
+
+logger = logging.getLogger(__name__)
+
+
+class AutonomousExecutor:
+    """Execute Claude's autonomous trading decisions."""
+
+    def __init__(self):
+        self.alpaca = AlpacaClient(ACCOUNT_ID)
+        self.risk = RiskManager(ACCOUNT_ID)
+        self.db = Database()
+        self.thesis_tracker = ThesisTracker()
+
+    def execute_decisions(self, decisions: dict) -> dict:
+        """Execute new positions and position reviews from Claude's decisions."""
+        results = {
+            "opened": [],
+            "closed": [],
+            "held": [],
+            "errors": [],
+        }
+
+        if not self.alpaca.is_market_open():
+            logger.warning("Market is closed. Skipping execution.")
+            return results
+
+        # Execute new positions
+        for position in decisions.get("new_positions", []):
+            try:
+                result = self._open_position(position)
+                if result:
+                    results["opened"].append(result)
+            except Exception as e:
+                logger.error(f"Failed to open {position['symbol']}: {e}")
+                results["errors"].append({"symbol": position["symbol"], "error": str(e)})
+
+        # Execute position reviews
+        for review in decisions.get("position_reviews", []):
+            try:
+                if review["action"] == "close":
+                    result = self._close_position(review)
+                    if result:
+                        results["closed"].append(result)
+                else:
+                    results["held"].append(review["symbol"])
+            except Exception as e:
+                logger.error(f"Failed to process review for {review['symbol']}: {e}")
+                results["errors"].append({"symbol": review["symbol"], "error": str(e)})
+
+        # Store learnings from decisions
+        for lesson in decisions.get("lessons_learned", []):
+            self.db.insert_learning({
+                "account_id": ACCOUNT_ID,
+                "learning_type": "self_reflection",
+                "category": "daily_decision",
+                "insight": lesson,
+            })
+
+        logger.info(
+            f"Execution results: opened={len(results['opened'])}, "
+            f"closed={len(results['closed'])}, held={len(results['held'])}"
+        )
+        return results
+
+    def _open_position(self, position: dict) -> dict:
+        """Open a new position based on Claude's decision."""
+        symbol = position["symbol"]
+        confidence = position.get("confidence", 0)
+        size_pct = position.get("position_size_pct", 0.5)
+
+        # Check max trades per day
+        can_trade, count = self.risk.check_max_trades_per_day()
+        if not can_trade:
+            logger.info(f"Max daily trades reached ({count}). Skipping {symbol}.")
+            return None
+
+        # Calculate position size
+        position_size = self.risk.calculate_position_size(symbol, confidence)
+        position_size *= size_pct
+
+        if position_size < 1.0:
+            logger.info(f"Position too small for {symbol}: ${position_size:.2f}")
+            return None
+
+        # Risk check
+        can_open, reason = self.risk.can_open_position(symbol, position_size)
+        if not can_open:
+            logger.info(f"Cannot open {symbol}: {reason}")
+            return None
+
+        # Submit order
+        side = position.get("side", "buy")
+        order = self.alpaca.submit_market_order(
+            symbol=symbol, side=side, notional=position_size
+        )
+
+        if not order:
+            return None
+
+        # Record trade
+        trade_record = {
+            "account_id": ACCOUNT_ID,
+            "symbol": symbol,
+            "side": side,
+            "notional": round(position_size, 2),
+            "order_type": "market",
+            "alpaca_order_id": str(order.id),
+            "status": str(order.status),
+            "strategy": "autonomous",
+            "reasoning": position.get("thesis", ""),
+        }
+        db_trade = self.db.insert_trade(trade_record)
+
+        # Record thesis
+        if db_trade:
+            self.thesis_tracker.record_thesis(
+                trade_id=db_trade["id"],
+                symbol=symbol,
+                thesis=position.get("thesis", ""),
+                target_price=position.get("target_price", 0),
+                stop_loss=position.get("stop_loss", 0),
+                invalidation=position.get("invalidation", ""),
+                time_horizon_days=position.get("time_horizon_days", 7),
+                confidence=confidence,
+            )
+
+        logger.info(
+            f"Opened {side} {symbol}: ${position_size:.2f} "
+            f"(confidence={confidence})"
+        )
+
+        return {
+            "symbol": symbol,
+            "side": side,
+            "notional": position_size,
+            "confidence": confidence,
+        }
+
+    def _close_position(self, review: dict) -> dict:
+        """Close an existing position."""
+        symbol = review["symbol"]
+
+        # Get current position info before closing
+        position = self.alpaca.get_position(symbol)
+        if not position:
+            logger.info(f"No position found for {symbol}")
+            return None
+
+        entry_price = float(position.avg_entry_price)
+        exit_price = float(position.current_price)
+        realized_pnl = float(position.unrealized_pl)
+        pnl_pct = float(position.unrealized_plpc) * 100
+
+        # Close position
+        result = self.alpaca.close_position(symbol)
+        if not result:
+            return None
+
+        # Find the trade record
+        trades = self.db.get_open_trades(ACCOUNT_ID)
+        trade = next((t for t in trades if t["symbol"] == symbol), None)
+
+        # Update trade status
+        if trade:
+            self.db.update_trade(trade["id"], {
+                "status": "closed",
+                "fill_price": exit_price,
+                "filled_at": datetime.now(timezone.utc).isoformat(),
+            })
+
+        # Record outcome
+        self.db.insert_trade_outcome({
+            "trade_id": trade["id"] if trade else None,
+            "account_id": ACCOUNT_ID,
+            "symbol": symbol,
+            "strategy": "autonomous",
+            "entry_price": entry_price,
+            "exit_price": exit_price,
+            "entry_date": trade.get("created_at") if trade else None,
+            "exit_date": datetime.now(timezone.utc).isoformat(),
+            "realized_pnl": round(realized_pnl, 2),
+            "pnl_pct": round(pnl_pct, 2),
+            "outcome": "win" if realized_pnl > 0 else "loss",
+            "exit_reason": review.get("reasoning", "autonomous_decision"),
+        })
+
+        logger.info(
+            f"Closed {symbol}: P&L=${realized_pnl:.2f} ({pnl_pct:.2f}%)"
+        )
+
+        return {
+            "symbol": symbol,
+            "pnl": realized_pnl,
+            "reason": review.get("reasoning", ""),
+        }
+
+    def execute_monitor_actions(self, monitor_result: dict) -> list:
+        """Execute actions from midday position monitoring."""
+        closed = []
+        for update in monitor_result.get("position_updates", []):
+            if update.get("action") == "close":
+                result = self._close_position(update)
+                if result:
+                    closed.append(result)
+
+        return closed

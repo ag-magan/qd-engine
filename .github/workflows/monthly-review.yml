@@ -1,0 +1,37 @@
+name: Monthly Review
+
+on:
+  schedule:
+    - cron: '0 1 1 * *'  # 1st of month, 8 PM ET = 1:00 AM UTC
+  workflow_dispatch:
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run monthly review
+        env:
+          ALPACA_ACCT1_PAPER_KEY: ${{ secrets.ALPACA_ACCT1_PAPER_KEY }}
+          ALPACA_ACCT1_PAPER_SECRET: ${{ secrets.ALPACA_ACCT1_PAPER_SECRET }}
+          ALPACA_ACCT2_PAPER_KEY: ${{ secrets.ALPACA_ACCT2_PAPER_KEY }}
+          ALPACA_ACCT2_PAPER_SECRET: ${{ secrets.ALPACA_ACCT2_PAPER_SECRET }}
+          ALPACA_ACCT3_PAPER_KEY: ${{ secrets.ALPACA_ACCT3_PAPER_KEY }}
+          ALPACA_ACCT3_PAPER_SECRET: ${{ secrets.ALPACA_ACCT3_PAPER_SECRET }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+          GMAIL_ADDRESS: ${{ secrets.GMAIL_ADDRESS }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          TRADING_MODE: paper
+        run: python -m src.learning.monthly_review

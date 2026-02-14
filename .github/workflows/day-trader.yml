@@ -1,0 +1,33 @@
+name: Day Trader
+
+on:
+  schedule:
+    - cron: '30 13 * * 1-5'  # 8:30 AM ET (13:30 UTC)
+  workflow_dispatch:
+
+jobs:
+  run-day-trader:
+    runs-on: ubuntu-latest
+    timeout-minutes: 480  # 8 hours for full market day loop
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run day trader loop
+        env:
+          ALPACA_ACCT2_PAPER_KEY: ${{ secrets.ALPACA_ACCT2_PAPER_KEY }}
+          ALPACA_ACCT2_PAPER_SECRET: ${{ secrets.ALPACA_ACCT2_PAPER_SECRET }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+          GMAIL_ADDRESS: ${{ secrets.GMAIL_ADDRESS }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          TRADING_MODE: paper
+        run: python -m src.account2_daytrader.main loop

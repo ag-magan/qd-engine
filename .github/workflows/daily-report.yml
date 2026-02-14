@@ -1,0 +1,36 @@
+name: Daily Report
+
+on:
+  schedule:
+    - cron: '15 21 * * 1-5'  # 4:15 PM ET (21:15 UTC)
+  workflow_dispatch:
+
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Send daily report
+        env:
+          ALPACA_ACCT1_PAPER_KEY: ${{ secrets.ALPACA_ACCT1_PAPER_KEY }}
+          ALPACA_ACCT1_PAPER_SECRET: ${{ secrets.ALPACA_ACCT1_PAPER_SECRET }}
+          ALPACA_ACCT2_PAPER_KEY: ${{ secrets.ALPACA_ACCT2_PAPER_KEY }}
+          ALPACA_ACCT2_PAPER_SECRET: ${{ secrets.ALPACA_ACCT2_PAPER_SECRET }}
+          ALPACA_ACCT3_PAPER_KEY: ${{ secrets.ALPACA_ACCT3_PAPER_KEY }}
+          ALPACA_ACCT3_PAPER_SECRET: ${{ secrets.ALPACA_ACCT3_PAPER_SECRET }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+          GMAIL_ADDRESS: ${{ secrets.GMAIL_ADDRESS }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          TRADING_MODE: paper
+        run: python -m src.reporting.daily_email
