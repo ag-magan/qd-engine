@@ -5,7 +5,7 @@ from typing import Optional
 
 import anthropic
 
-from src.shared.config import AI_API_KEY, AI_MODEL
+from src.shared.config import ANTHROPIC_API_KEY, CLAUDE_MODEL
 from src.shared.database import Database
 
 logger = logging.getLogger(__name__)
@@ -15,8 +15,8 @@ class ClaudeClient:
     """Wrapper around Anthropic SDK with JSON parsing and logging."""
 
     def __init__(self, account_id: str = None, model: str = None):
-        self.client = anthropic.Anthropic(api_key=AI_API_KEY)
-        self.model = model or AI_MODEL
+        self.client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+        self.model = model or CLAUDE_MODEL
         self.account_id = account_id
         self.db = Database()
 

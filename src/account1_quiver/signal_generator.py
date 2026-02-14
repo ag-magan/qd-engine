@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 
 
 class SignalGenerator:
-    """Generate trading signals from alternative data sources."""
+    """Generate trading signals from QuiverQuant data sources."""
 
     def __init__(self):
         self.quiver = QuiverClient()

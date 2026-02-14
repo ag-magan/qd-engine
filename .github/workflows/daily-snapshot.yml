@@ -22,15 +22,15 @@ jobs:
 
       - name: Run
         env:
-          ACCT1_KEY: ${{ secrets.ACCT1_KEY }}
-          ACCT1_SECRET: ${{ secrets.ACCT1_SECRET }}
-          ACCT2_KEY: ${{ secrets.ACCT2_KEY }}
-          ACCT2_SECRET: ${{ secrets.ACCT2_SECRET }}
-          ACCT3_KEY: ${{ secrets.ACCT3_KEY }}
-          ACCT3_SECRET: ${{ secrets.ACCT3_SECRET }}
-          DB_URL: ${{ secrets.DB_URL }}
-          DB_KEY: ${{ secrets.DB_KEY }}
-          NOTIFY_ADDRESS: ${{ secrets.NOTIFY_ADDRESS }}
-          NOTIFY_PASSWORD: ${{ secrets.NOTIFY_PASSWORD }}
+          ALPACA_ACCT1_PAPER_KEY: ${{ secrets.ALPACA_ACCT1_PAPER_KEY }}
+          ALPACA_ACCT1_PAPER_SECRET: ${{ secrets.ALPACA_ACCT1_PAPER_SECRET }}
+          ALPACA_ACCT2_PAPER_KEY: ${{ secrets.ALPACA_ACCT2_PAPER_KEY }}
+          ALPACA_ACCT2_PAPER_SECRET: ${{ secrets.ALPACA_ACCT2_PAPER_SECRET }}
+          ALPACA_ACCT3_PAPER_KEY: ${{ secrets.ALPACA_ACCT3_PAPER_KEY }}
+          ALPACA_ACCT3_PAPER_SECRET: ${{ secrets.ALPACA_ACCT3_PAPER_SECRET }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+          GMAIL_ADDRESS: ${{ secrets.GMAIL_ADDRESS }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
           TRADING_MODE: paper
         run: python -m src.reporting.snapshot

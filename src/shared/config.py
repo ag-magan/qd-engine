@@ -3,40 +3,40 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# Trading mode
+# Trading mode: "paper" or "live"
 TRADING_MODE = os.getenv("TRADING_MODE", "paper")
 
-# Broker credentials per account
+# Alpaca credentials per account
 ALPACA_ACCOUNTS = {
     "quiver_strat": {
-        "key": os.getenv("ACCT1_KEY", ""),
-        "secret": os.getenv("ACCT1_SECRET", ""),
+        "key": os.getenv("ALPACA_ACCT1_PAPER_KEY", ""),
+        "secret": os.getenv("ALPACA_ACCT1_PAPER_SECRET", ""),
     },
     "day_trader": {
-        "key": os.getenv("ACCT2_KEY", ""),
-        "secret": os.getenv("ACCT2_SECRET", ""),
+        "key": os.getenv("ALPACA_ACCT2_PAPER_KEY", ""),
+        "secret": os.getenv("ALPACA_ACCT2_PAPER_SECRET", ""),
     },
     "autonomous": {
-        "key": os.getenv("ACCT3_KEY", ""),
-        "secret": os.getenv("ACCT3_SECRET", ""),
+        "key": os.getenv("ALPACA_ACCT3_PAPER_KEY", ""),
+        "secret": os.getenv("ALPACA_ACCT3_PAPER_SECRET", ""),
     },
 }
 
-# Data provider
-DATA_API_TOKEN = os.getenv("DATA_API_TOKEN", "")
-DATA_BASE_URL = "https://api.quiverquant.com/beta"
+# QuiverQuant
+QUIVER_API_TOKEN = os.getenv("QUIVER_API_TOKEN", "")
+QUIVER_BASE_URL = "https://api.quiverquant.com/beta"
 
-# Database
-DB_URL = os.getenv("DB_URL", "")
-DB_KEY = os.getenv("DB_KEY", "")
+# Supabase
+SUPABASE_URL = os.getenv("SUPABASE_URL", "")
+SUPABASE_KEY = os.getenv("SUPABASE_KEY", "")
 
-# AI provider
-AI_API_KEY = os.getenv("AI_API_KEY", "")
-AI_MODEL = "claude-sonnet-4-5-20250929"
+# Anthropic
+ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
+CLAUDE_MODEL = "claude-sonnet-4-5-20250929"
 
-# Notifications
-NOTIFY_ADDRESS = os.getenv("NOTIFY_ADDRESS", "")
-NOTIFY_PASSWORD = os.getenv("NOTIFY_PASSWORD", "")
+# Gmail
+GMAIL_ADDRESS = os.getenv("GMAIL_ADDRESS", "")
+GMAIL_APP_PASSWORD = os.getenv("GMAIL_APP_PASSWORD", "")
 
 # Capital isolation: each account uses exactly $10,000
 STARTING_CAPITAL = 10_000

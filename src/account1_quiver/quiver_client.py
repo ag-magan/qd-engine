@@ -6,19 +6,19 @@ import requests
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
-from src.shared.config import DATA_API_TOKEN, DATA_BASE_URL
+from src.shared.config import QUIVER_API_TOKEN, QUIVER_BASE_URL
 
 logger = logging.getLogger(__name__)
 
 
 class QuiverClient:
-    """HTTP client for data provider API endpoints."""
+    """HTTP client for QuiverQuant API endpoints."""
 
     def __init__(self):
-        self.base_url = DATA_BASE_URL
+        self.base_url = QUIVER_BASE_URL
         self.headers = {
             "accept": "application/json",
-            "Authorization": f"Token {DATA_API_TOKEN}",
+            "Authorization": f"Token {QUIVER_API_TOKEN}",
         }
         self.request_delay = 1.0  # Rate limiting between requests
         self.timeout = 90  # Generous timeout for large endpoints
@@ -37,7 +37,7 @@ class QuiverClient:
         self.session.mount("http://", adapter)
 
     def _get(self, endpoint: str, params: dict = None) -> Optional[list]:
-        """Make a GET request to the Data API API with retries."""
+        """Make a GET request to the QuiverQuant API with retries."""
         url = f"{self.base_url}{endpoint}"
         try:
             logger.info(f"Fetching {endpoint}...")
@@ -55,16 +55,16 @@ class QuiverClient:
                 return data["results"]
             return data if isinstance(data, list) else [data]
         except requests.exceptions.HTTPError as e:
-            logger.error(f"Data API API error for {endpoint}: {e}")
+            logger.error(f"QuiverQuant API error for {endpoint}: {e}")
             return None
         except requests.exceptions.Timeout:
-            logger.error(f"Data API timeout for {endpoint} after {self.timeout}s")
+            logger.error(f"QuiverQuant timeout for {endpoint} after {self.timeout}s")
             return None
         except requests.exceptions.ConnectionError as e:
-            logger.error(f"Data API connection error for {endpoint}: {e}")
+            logger.error(f"QuiverQuant connection error for {endpoint}: {e}")
             return None
         except Exception as e:
-            logger.error(f"Data API request failed for {endpoint}: {e}")
+            logger.error(f"QuiverQuant request failed for {endpoint}: {e}")
             return None
 
     def get_congress_trades(self) -> Optional[list]:

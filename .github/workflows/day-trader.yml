@@ -22,12 +22,12 @@ jobs:
 
       - name: Run
         env:
-          ACCT2_KEY: ${{ secrets.ACCT2_KEY }}
-          ACCT2_SECRET: ${{ secrets.ACCT2_SECRET }}
-          AI_API_KEY: ${{ secrets.AI_API_KEY }}
-          DB_URL: ${{ secrets.DB_URL }}
-          DB_KEY: ${{ secrets.DB_KEY }}
-          NOTIFY_ADDRESS: ${{ secrets.NOTIFY_ADDRESS }}
-          NOTIFY_PASSWORD: ${{ secrets.NOTIFY_PASSWORD }}
+          ALPACA_ACCT2_PAPER_KEY: ${{ secrets.ALPACA_ACCT2_PAPER_KEY }}
+          ALPACA_ACCT2_PAPER_SECRET: ${{ secrets.ALPACA_ACCT2_PAPER_SECRET }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+          GMAIL_ADDRESS: ${{ secrets.GMAIL_ADDRESS }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
           TRADING_MODE: paper
         run: python -m src.account2_daytrader.main loop
