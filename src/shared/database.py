@@ -4,14 +4,14 @@ from typing import Any, Optional
 
 from supabase import create_client, Client
 
-from src.shared.config import SUPABASE_URL, SUPABASE_KEY
+from src.shared.config import DB_URL, DB_KEY
 
 logger = logging.getLogger(__name__)
 
 
 def get_db() -> Client:
-    """Create and return a Supabase client."""
-    return create_client(SUPABASE_URL, SUPABASE_KEY)
+    """Create and return a database client."""
+    return create_client(DB_URL, DB_KEY)
 
 
 class Database:

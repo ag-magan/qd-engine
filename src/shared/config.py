@@ -3,40 +3,40 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# Trading mode: "paper" or "live"
+# Trading mode
 TRADING_MODE = os.getenv("TRADING_MODE", "paper")
 
-# Alpaca credentials per account
+# Broker credentials per account
 ALPACA_ACCOUNTS = {
     "quiver_strat": {
-        "key": os.getenv("ALPACA_ACCT1_PAPER_KEY", ""),
-        "secret": os.getenv("ALPACA_ACCT1_PAPER_SECRET", ""),
+        "key": os.getenv("ACCT1_KEY", ""),
+        "secret": os.getenv("ACCT1_SECRET", ""),
     },
     "day_trader": {
-        "key": os.getenv("ALPACA_ACCT2_PAPER_KEY", ""),
-        "secret": os.getenv("ALPACA_ACCT2_PAPER_SECRET", ""),
+        "key": os.getenv("ACCT2_KEY", ""),
+        "secret": os.getenv("ACCT2_SECRET", ""),
     },
     "autonomous": {
-        "key": os.getenv("ALPACA_ACCT3_PAPER_KEY", ""),
-        "secret": os.getenv("ALPACA_ACCT3_PAPER_SECRET", ""),
+        "key": os.getenv("ACCT3_KEY", ""),
+        "secret": os.getenv("ACCT3_SECRET", ""),
     },
 }
 
-# QuiverQuant
-QUIVER_API_TOKEN = os.getenv("QUIVER_API_TOKEN", "")
-QUIVER_BASE_URL = "https://api.quiverquant.com/beta"
+# Data provider
+DATA_API_TOKEN = os.getenv("DATA_API_TOKEN", "")
+DATA_BASE_URL = "https://api.quiverquant.com/beta"
 
-# Supabase
-SUPABASE_URL = os.getenv("SUPABASE_URL", "")
-SUPABASE_KEY = os.getenv("SUPABASE_KEY", "")
+# Database
+DB_URL = os.getenv("DB_URL", "")
+DB_KEY = os.getenv("DB_KEY", "")
 
-# Anthropic
-ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
-CLAUDE_MODEL = "claude-sonnet-4-5-20250929"
+# AI provider
+AI_API_KEY = os.getenv("AI_API_KEY", "")
+AI_MODEL = "claude-sonnet-4-5-20250929"
 
-# Gmail
-GMAIL_ADDRESS = os.getenv("GMAIL_ADDRESS", "")
-GMAIL_APP_PASSWORD = os.getenv("GMAIL_APP_PASSWORD", "")
+# Notifications
+NOTIFY_ADDRESS = os.getenv("NOTIFY_ADDRESS", "")
+NOTIFY_PASSWORD = os.getenv("NOTIFY_PASSWORD", "")
 
 # Capital isolation: each account uses exactly $10,000
 STARTING_CAPITAL = 10_000
@@ -58,8 +58,8 @@ ACCOUNT_CONFIGS = {
         "max_per_trade_pct": 0.10,
         "max_concurrent_positions": 3,
         "max_trades_per_day": 8,
-        "no_new_trades_after": "15:30",  # ET
-        "force_close_at": "15:50",  # ET
+        "no_new_trades_after": "15:30",
+        "force_close_at": "15:50",
         "skip_first_minutes": 5,
     },
     "autonomous": {

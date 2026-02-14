@@ -19,8 +19,8 @@ logger = logging.getLogger(__name__)
 
 
 def run():
-    """Main entry point for Account 1 QuiverQuant strategy."""
-    tracker = HealthTracker("quiver-strategy", ACCOUNT_ID)
+    """Main entry point for Account 1 signal strategy."""
+    tracker = HealthTracker("process-a", ACCOUNT_ID)
 
     try:
         logger.info("=== Account 1: Signal Strategy Starting ===")
@@ -35,7 +35,7 @@ def run():
             raw_signals = generator.generate_all_signals()
             logger.info(f"Generated {len(raw_signals)} raw signals")
         except Exception as e:
-            tracker.add_error("QuiverQuant", str(e), "No signals generated this cycle")
+            tracker.add_error("DataProvider", str(e), "No signals generated this cycle")
             raw_signals = []
 
         if not raw_signals:

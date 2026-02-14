@@ -12,12 +12,12 @@ class HealthTracker:
     """Track errors, warnings, and health status during a workflow run.
 
     Usage:
-        tracker = HealthTracker("quiver-strategy", "quiver_strat")
+        tracker = HealthTracker("process-a", "quiver_strat")
         try:
             # ... do work ...
-            tracker.add_warning("QuiverQuant Wikipedia endpoint returned empty data")
+            tracker.add_warning("Data endpoint returned empty data")
         except Exception as e:
-            tracker.add_error("QuiverQuant API", str(e))
+            tracker.add_error("DataProvider", str(e))
         finally:
             tracker.finalize()
     """
