@@ -188,6 +188,18 @@ class ClaudeClient:
                     logger.warning(f"Opus overloaded, retrying in {wait}s (attempt {attempt + 1}/{max_retries})")
                     time.sleep(wait)
                     continue
+                if "overloaded" in str(e).lower() and model == "opus":
+                    logger.warning("Opus exhausted retries, falling back to Sonnet")
+                    return self.analyze(
+                        system_prompt=system_prompt,
+                        user_prompt=user_prompt,
+                        model="sonnet",
+                        analysis_type=analysis_type,
+                        expect_json=expect_json,
+                        max_tokens=min(max_tokens, 8192),
+                        thinking=True,
+                        thinking_budget=4096,
+                    )
                 logger.error(f"Strategic review API call failed ({model_id}): {e}")
                 return None
             except Exception as e:
