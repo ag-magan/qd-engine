@@ -150,33 +150,46 @@ class ClaudeClient:
 
         Effort levels: 'low', 'medium', 'high' (default), 'max'
         """
+        import time
+
         model_id = CLAUDE_MODELS[model]
-        try:
-            params = {
-                "model": model_id,
-                "max_tokens": max_tokens,
-                "thinking": {"type": "adaptive"},
-                "output_config": {"effort": effort},
-                "system": system_prompt,
-                "messages": [{"role": "user", "content": user_prompt}],
-            }
+        max_retries = 3
 
-            # Use streaming for Opus to avoid timeout on long-running requests
-            with self.client.messages.stream(**params) as stream:
-                message = stream.get_final_message()
+        for attempt in range(max_retries):
+            try:
+                params = {
+                    "model": model_id,
+                    "max_tokens": max_tokens,
+                    "thinking": {"type": "adaptive"},
+                    "output_config": {"effort": effort},
+                    "system": system_prompt,
+                    "messages": [{"role": "user", "content": user_prompt}],
+                }
 
-            response_text = self._extract_text(message)
-            tokens_used = message.usage.input_tokens + message.usage.output_tokens
-            self._log(model_id, analysis_type, user_prompt, response_text, tokens_used)
+                # Use streaming for Opus to avoid timeout on long-running requests
+                with self.client.messages.stream(**params) as stream:
+                    message = stream.get_final_message()
 
-            if expect_json:
-                parsed = self._parse_json(response_text)
-                if parsed is None:
-                    logger.error("Failed to parse JSON from strategic review response")
-                return parsed
-            else:
-                return {"text": response_text, "tokens_used": tokens_used}
+                response_text = self._extract_text(message)
+                tokens_used = message.usage.input_tokens + message.usage.output_tokens
+                self._log(model_id, analysis_type, user_prompt, response_text, tokens_used)
 
-        except Exception as e:
-            logger.error(f"Strategic review API call failed ({model_id}): {e}")
-            return None
+                if expect_json:
+                    parsed = self._parse_json(response_text)
+                    if parsed is None:
+                        logger.error("Failed to parse JSON from strategic review response")
+                    return parsed
+                else:
+                    return {"text": response_text, "tokens_used": tokens_used}
+
+            except anthropic.APIStatusError as e:
+                if "overloaded" in str(e).lower() and attempt < max_retries - 1:
+                    wait = 30 * (attempt + 1)
+                    logger.warning(f"Opus overloaded, retrying in {wait}s (attempt {attempt + 1}/{max_retries})")
+                    time.sleep(wait)
+                    continue
+                logger.error(f"Strategic review API call failed ({model_id}): {e}")
+                return None
+            except Exception as e:
+                logger.error(f"Strategic review API call failed ({model_id}): {e}")
+                return None
