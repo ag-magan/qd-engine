@@ -161,7 +161,9 @@ class ClaudeClient:
                 "messages": [{"role": "user", "content": user_prompt}],
             }
 
-            message = self.client.messages.create(**params)
+            # Use streaming for Opus to avoid timeout on long-running requests
+            with self.client.messages.stream(**params) as stream:
+                message = stream.get_final_message()
 
             response_text = self._extract_text(message)
             tokens_used = message.usage.input_tokens + message.usage.output_tokens
