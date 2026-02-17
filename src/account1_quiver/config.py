@@ -84,7 +84,7 @@ BASE_SCORES = {
 }
 
 # Minimum composite score to send to Claude for analysis
-MIN_COMPOSITE_SCORE = 20
+MIN_COMPOSITE_SCORE = 15
 
 # Maximum age of signals to consider (hours)
 SIGNAL_MAX_AGE_HOURS = 48

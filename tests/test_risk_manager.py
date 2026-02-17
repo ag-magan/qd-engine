@@ -39,14 +39,14 @@ class TestRiskManager(unittest.TestCase):
         self.assertEqual(reason, "OK")
 
     def test_cannot_exceed_max_invested(self):
-        self.mock_alpaca.get_invested_value.return_value = 5500
+        self.mock_alpaca.get_invested_value.return_value = 8200
         can, reason = self.risk.can_open_position("AAPL", 600)
         self.assertFalse(can)
         self.assertIn("max invested", reason.lower())
 
     def test_cannot_exceed_max_position_size(self):
-        # Max position for quiver_strat is 8% of 10k = $800
-        can, reason = self.risk.can_open_position("AAPL", 900)
+        # Max position for quiver_strat is 15% of 10k = $1,500
+        can, reason = self.risk.can_open_position("AAPL", 1600)
         self.assertFalse(can)
         self.assertIn("exceeds max", reason.lower())
 
@@ -75,7 +75,7 @@ class TestRiskManager(unittest.TestCase):
 
     def test_position_size_respects_max(self):
         size = self.risk.calculate_position_size("AAPL", 100)
-        max_pos = STARTING_CAPITAL * 0.08  # 8% for quiver_strat
+        max_pos = STARTING_CAPITAL * 0.15  # 15% for quiver_strat
         self.assertLessEqual(size, max_pos)
 
 
@@ -101,10 +101,10 @@ class TestDayTraderRisk(unittest.TestCase):
         self.assertTrue(can)
 
     def test_max_trades_per_day(self):
-        self.mock_db.get_todays_trades.return_value = [{}] * 8
+        self.mock_db.get_todays_trades.return_value = [{}] * 12
         can, count = self.risk.check_max_trades_per_day()
         self.assertFalse(can)
-        self.assertEqual(count, 8)
+        self.assertEqual(count, 12)
 
 
 if __name__ == "__main__":
