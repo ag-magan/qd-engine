@@ -100,6 +100,9 @@ class ClaudeClient:
             }
             if thinking and model != "opus":
                 params["thinking"] = {"type": "enabled", "budget_tokens": thinking_budget}
+                # API requires max_tokens > budget_tokens
+                if params["max_tokens"] <= thinking_budget:
+                    params["max_tokens"] = thinking_budget + max_tokens
 
             message = self.client.messages.create(**params)
 
