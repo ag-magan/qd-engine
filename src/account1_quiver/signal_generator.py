@@ -4,7 +4,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from src.shared.database import Database
-from src.account1_quiver.config import ACCOUNT_ID, SIGNAL_SOURCES
+from src.account1_quiver.config import ACCOUNT_ID, SIGNAL_MAX_AGE_HOURS, SIGNAL_SOURCES
 from src.account1_quiver.quiver_client import QuiverClient
 
 logger = logging.getLogger(__name__)
@@ -48,10 +48,10 @@ class SignalGenerator:
 
             try:
                 # Pre-fetch existing signals for this source (1 DB call)
-                existing = self.db.get_existing_signal_keys(ACCOUNT_ID, source_name)
+                existing = self.db.get_existing_signal_keys(ACCOUNT_ID, source_name, since_hours=SIGNAL_MAX_AGE_HOURS)
                 # gov_contracts_all also dedupes against gov_contracts
                 if source_name == "gov_contracts_all":
-                    existing |= self.db.get_existing_signal_keys(ACCOUNT_ID, "gov_contracts")
+                    existing |= self.db.get_existing_signal_keys(ACCOUNT_ID, "gov_contracts", since_hours=SIGNAL_MAX_AGE_HOURS)
 
                 signals = processor(existing_keys=existing)
                 if signals:
