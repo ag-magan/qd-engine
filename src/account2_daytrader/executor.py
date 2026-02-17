@@ -26,6 +26,11 @@ class DayTraderExecutor:
         side = setup.get("side", "buy")
         strategy = setup.get("strategy", "unknown")
 
+        # Guard: skip if market is closed (holidays, early closes)
+        if not self.alpaca.is_market_open():
+            logger.warning(f"Market closed. Skipping {symbol}.")
+            return {"status": "blocked", "reason": "market_closed"}
+
         # Risk checks
         can_trade, daily_pnl = self.risk.check_daily_loss_limit()
         if not can_trade:

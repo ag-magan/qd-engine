@@ -1,5 +1,6 @@
+import json
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from src.shared.alpaca_client import AlpacaClient
 from src.shared.risk_manager import RiskManager
@@ -8,6 +9,8 @@ from src.account3_autonomous.config import ACCOUNT_ID
 from src.account3_autonomous.thesis_tracker import ThesisTracker
 
 logger = logging.getLogger(__name__)
+
+QUEUE_MAX_AGE_HOURS = 48
 
 
 class AutonomousExecutor:
@@ -20,7 +23,12 @@ class AutonomousExecutor:
         self.thesis_tracker = ThesisTracker()
 
     def execute_decisions(self, decisions: dict) -> dict:
-        """Execute new positions and position reviews from Claude's decisions."""
+        """Execute new positions and position reviews from Claude's decisions.
+
+        If the market is closed, queues new positions for execution
+        at the next market open. Position reviews (closes) are skipped
+        since they require live positions.
+        """
         results = {
             "opened": [],
             "closed": [],
@@ -28,8 +36,33 @@ class AutonomousExecutor:
             "errors": [],
         }
 
+        # Store learnings regardless of market status
+        for lesson in decisions.get("lessons_learned", []):
+            self.db.insert_learning({
+                "account_id": ACCOUNT_ID,
+                "learning_type": "self_reflection",
+                "category": "daily_decision",
+                "insight": lesson,
+            })
+
         if not self.alpaca.is_market_open():
-            logger.warning("Market is closed. Skipping execution.")
+            # Queue new positions for later execution
+            new_positions = decisions.get("new_positions", [])
+            if new_positions:
+                queued = self._queue_positions(new_positions)
+                logger.info(
+                    f"Market closed. Queued {len(queued)} positions for next open."
+                )
+            else:
+                logger.info("Market closed. No new positions to queue.")
+
+            # Position reviews require live market — skip them
+            reviews = decisions.get("position_reviews", [])
+            if reviews:
+                logger.info(
+                    f"Market closed. Skipping {len(reviews)} position reviews."
+                )
+
             return results
 
         # Execute new positions
@@ -55,20 +88,102 @@ class AutonomousExecutor:
                 logger.error(f"Failed to process review for {review['symbol']}: {e}")
                 results["errors"].append({"symbol": review["symbol"], "error": str(e)})
 
-        # Store learnings from decisions
-        for lesson in decisions.get("lessons_learned", []):
-            self.db.insert_learning({
-                "account_id": ACCOUNT_ID,
-                "learning_type": "self_reflection",
-                "category": "daily_decision",
-                "insight": lesson,
-            })
-
         logger.info(
             f"Execution results: opened={len(results['opened'])}, "
             f"closed={len(results['closed'])}, held={len(results['held'])}"
         )
         return results
+
+    def execute_queued_orders(self) -> list:
+        """Execute any pending queued orders if market is open."""
+        if not self.alpaca.is_market_open():
+            return []
+
+        pending = self._get_pending_orders()
+        if not pending:
+            logger.info("No queued orders to execute")
+            return []
+
+        logger.info(f"Found {len(pending)} queued orders to execute")
+        executed = []
+
+        for order_row in pending:
+            position = order_row.get("signal_data", {})
+            position["symbol"] = order_row["symbol"]
+            position["confidence"] = order_row.get("confidence", 50)
+            position["position_size_pct"] = float(order_row.get("position_size_pct", 0.5))
+            position["side"] = order_row["direction"]
+            position["thesis"] = order_row.get("reasoning", "")
+
+            result = self._open_position(position)
+            if result:
+                self._mark_order_executed(order_row["id"])
+                executed.append(result)
+            else:
+                # Mark as executed even if risk checks reject it
+                self._mark_order_executed(order_row["id"])
+
+        logger.info(f"Executed {len(executed)}/{len(pending)} queued orders")
+        return executed
+
+    def _queue_positions(self, positions: list) -> list:
+        """Save new position decisions to pending_orders for later execution."""
+        queued = []
+        for position in positions:
+            symbol = position.get("symbol", "")
+            side = position.get("side", "buy")
+
+            row = {
+                "account_id": ACCOUNT_ID,
+                "symbol": symbol,
+                "direction": side,
+                "confidence": position.get("confidence", 50),
+                "position_size_pct": position.get("position_size_pct", 0.5),
+                "composite_score": position.get("confidence", 50),
+                "sources": ["autonomous"],
+                "signal_data": json.loads(json.dumps(position, default=str)),
+                "reasoning": position.get("thesis", ""),
+            }
+
+            try:
+                resp = self.db.client.table("pending_orders").insert(row).execute()
+                queued.append(resp.data[0] if resp.data else row)
+                logger.info(f"Queued {side} {symbol} (confidence={row['confidence']})")
+            except Exception as e:
+                logger.error(f"Failed to queue {symbol}: {e}")
+
+        return queued
+
+    def _get_pending_orders(self) -> list:
+        """Fetch pending orders that haven't expired."""
+        cutoff = (
+            datetime.now(timezone.utc) - timedelta(hours=QUEUE_MAX_AGE_HOURS)
+        ).isoformat()
+
+        try:
+            resp = (
+                self.db.client.table("pending_orders")
+                .select("*")
+                .eq("account_id", ACCOUNT_ID)
+                .eq("status", "pending")
+                .gte("created_at", cutoff)
+                .order("composite_score", desc=True)
+                .execute()
+            )
+            return resp.data
+        except Exception as e:
+            logger.error(f"Failed to fetch pending orders: {e}")
+            return []
+
+    def _mark_order_executed(self, order_id: str) -> None:
+        """Mark a pending order as executed."""
+        try:
+            self.db.client.table("pending_orders").update({
+                "status": "executed",
+                "executed_at": datetime.now(timezone.utc).isoformat(),
+            }).eq("id", order_id).execute()
+        except Exception as e:
+            logger.error(f"Failed to update pending order {order_id}: {e}")
 
     def _open_position(self, position: dict) -> dict:
         """Open a new position based on Claude's decision."""

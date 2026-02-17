@@ -21,6 +21,12 @@ def run_decision():
     try:
         logger.info("=== Account 3: Autonomous Decision Phase ===")
 
+        # Step 0: Execute any queued orders from previous off-hours runs
+        executor = AutonomousExecutor()
+        queued_executed = executor.execute_queued_orders()
+        if queued_executed:
+            logger.info(f"Executed {len(queued_executed)} queued orders from previous run")
+
         # Build comprehensive briefing
         briefing_builder = MarketBriefing()
         try:
