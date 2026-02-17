@@ -80,11 +80,11 @@ class TestSignalGenerator(unittest.TestCase):
         self.assertEqual(signals[0]["symbol"], "LMT")
 
     def test_dedup_prevents_duplicate_signals(self):
-        self.mock_db.signal_exists.return_value = True
         self.mock_quiver.get_house_trades.return_value = [
             {"Ticker": "AAPL", "Transaction": "Purchase", "Range": "$50,001 - $100,000"}
         ]
-        signals = self.generator._process_house_trading()
+        existing = {("AAPL", "house_trade")}
+        signals = self.generator._process_house_trading(existing_keys=existing)
         self.assertEqual(len(signals), 0)
 
     def test_off_exchange_short_ratio(self):

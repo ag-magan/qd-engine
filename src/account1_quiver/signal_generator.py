@@ -18,7 +18,11 @@ class SignalGenerator:
         self.db = Database()
 
     def generate_all_signals(self) -> list:
-        """Pull data from all enabled sources and generate signals."""
+        """Pull data from all enabled sources and generate signals.
+
+        Pre-fetches existing signal keys per source in one DB call each,
+        then uses local set lookups for dedup instead of per-signal API calls.
+        """
         all_signals = []
 
         source_methods = {
@@ -43,7 +47,13 @@ class SignalGenerator:
                 continue
 
             try:
-                signals = processor()
+                # Pre-fetch existing signals for this source (1 DB call)
+                existing = self.db.get_existing_signal_keys(ACCOUNT_ID, source_name)
+                # gov_contracts_all also dedupes against gov_contracts
+                if source_name == "gov_contracts_all":
+                    existing |= self.db.get_existing_signal_keys(ACCOUNT_ID, "gov_contracts")
+
+                signals = processor(existing_keys=existing)
                 if signals:
                     all_signals.extend(signals)
                     logger.info(f"Generated {len(signals)} signals from {source_name}")
@@ -54,23 +64,25 @@ class SignalGenerator:
 
         return all_signals
 
-    def _process_house_trading(self) -> list:
+    def _process_house_trading(self, existing_keys: set = None) -> list:
         """Process House representative trading data into signals."""
         data = self.quiver.get_house_trades()
         if not data:
             return []
-        return self._process_congressional_trades(data, "house_trading", "house_trade")
+        return self._process_congressional_trades(data, "house_trading", "house_trade", existing_keys or set())
 
-    def _process_senate_trading(self) -> list:
+    def _process_senate_trading(self, existing_keys: set = None) -> list:
         """Process Senate trading data into signals."""
         data = self.quiver.get_senate_trades()
         if not data:
             return []
-        return self._process_congressional_trades(data, "senate_trading", "senate_trade")
+        return self._process_congressional_trades(data, "senate_trading", "senate_trade", existing_keys or set())
 
-    def _process_congressional_trades(self, data: list, source: str, signal_type: str) -> list:
+    def _process_congressional_trades(self, data: list, source: str, signal_type: str,
+                                      existing_keys: set = None) -> list:
         """Shared logic for House and Senate trade processing."""
         signals = []
+        existing = existing_keys or set()
         config = SIGNAL_SOURCES[source]
         min_size = config.get("min_trade_size_usd", 15000)
 
@@ -94,7 +106,7 @@ class SignalGenerator:
             else:
                 continue
 
-            if self.db.signal_exists(ACCOUNT_ID, source, ticker.upper(), signal_type):
+            if (ticker.upper(), signal_type) in existing:
                 continue
 
             strength = min(trade_size / 100000, 1.0)
@@ -121,7 +133,7 @@ class SignalGenerator:
 
         return signals
 
-    def _process_insiders(self) -> list:
+    def _process_insiders(self, existing_keys: set = None) -> list:
         """Process insider trades, detecting clusters (2+ in 14 days)."""
         data = self.quiver.get_insider_trades()
         if not data:
@@ -158,7 +170,7 @@ class SignalGenerator:
                         recent_buys.append(t)  # Include if date can't be parsed
 
             if len(recent_buys) >= min_cluster:
-                if self.db.signal_exists(ACCOUNT_ID, "insider", ticker, "insider_cluster"):
+                if (ticker, "insider_cluster") in (existing_keys or set()):
                     continue
 
                 strength = min(len(recent_buys) / 5.0, 1.0)
@@ -176,12 +188,13 @@ class SignalGenerator:
 
         return signals
 
-    def _process_gov_contracts(self) -> list:
+    def _process_gov_contracts(self, existing_keys: set = None) -> list:
         """Process government contract awards."""
         data = self.quiver.get_gov_contracts()
         if not data:
             return []
 
+        existing = existing_keys or set()
         config = SIGNAL_SOURCES["gov_contracts"]
         min_value = config.get("min_contract_value", 10_000_000)
         signals = []
@@ -197,7 +210,7 @@ class SignalGenerator:
             if amount < min_value:
                 continue
 
-            if self.db.signal_exists(ACCOUNT_ID, "gov_contracts", ticker.upper(), "gov_contract"):
+            if (ticker.upper(), "gov_contract") in existing:
                 continue
 
             strength = min(amount / 100_000_000, 1.0)
@@ -215,12 +228,13 @@ class SignalGenerator:
 
         return signals
 
-    def _process_gov_contracts_all(self) -> list:
+    def _process_gov_contracts_all(self, existing_keys: set = None) -> list:
         """Process all announced government contracts (broader dataset)."""
         data = self.quiver.get_gov_contracts_all()
         if not data:
             return []
 
+        existing = existing_keys or set()
         config = SIGNAL_SOURCES["gov_contracts_all"]
         min_value = config.get("min_contract_value", 10_000_000)
         signals = []
@@ -237,9 +251,10 @@ class SignalGenerator:
                 continue
 
             # Dedup against both gov_contracts and gov_contracts_all
-            if self.db.signal_exists(ACCOUNT_ID, "gov_contracts_all", ticker.upper(), "gov_contract_all"):
+            # (existing_keys already includes gov_contracts keys from generate_all_signals)
+            if (ticker.upper(), "gov_contract_all") in existing:
                 continue
-            if self.db.signal_exists(ACCOUNT_ID, "gov_contracts", ticker.upper(), "gov_contract"):
+            if (ticker.upper(), "gov_contract") in existing:
                 continue
 
             strength = min(amount / 100_000_000, 1.0)
@@ -257,12 +272,13 @@ class SignalGenerator:
 
         return signals
 
-    def _process_lobbying(self) -> list:
+    def _process_lobbying(self, existing_keys: set = None) -> list:
         """Process lobbying data, detecting spending increases."""
         data = self.quiver.get_lobbying()
         if not data:
             return []
 
+        existing = existing_keys or set()
         config = SIGNAL_SOURCES["lobbying"]
         min_increase = config.get("min_spending_increase_pct", 50)
         signals = []
@@ -291,7 +307,7 @@ class SignalGenerator:
             if previous_avg > 0:
                 increase_pct = ((latest - previous_avg) / previous_avg) * 100
                 if increase_pct >= min_increase:
-                    if self.db.signal_exists(ACCOUNT_ID, "lobbying", ticker, "lobbying_change"):
+                    if (ticker, "lobbying_change") in existing:
                         continue
 
                     strength = min(increase_pct / 200, 1.0)
@@ -309,7 +325,7 @@ class SignalGenerator:
 
         return signals
 
-    def _process_off_exchange(self) -> list:
+    def _process_off_exchange(self, existing_keys: set = None) -> list:
         """Process off-exchange/dark pool short volume data (confirmation signal).
 
         High short volume ratio (OTC_Short / OTC_Total) can indicate institutional
@@ -320,6 +336,7 @@ class SignalGenerator:
         if not data:
             return []
 
+        existing = existing_keys or set()
         config = SIGNAL_SOURCES["off_exchange"]
         min_short_ratio = config.get("min_short_ratio", 0.60)
         signals = []
@@ -341,7 +358,7 @@ class SignalGenerator:
 
             dpi = self._parse_number(entry.get("DPI") or entry.get("dpi", 0))
 
-            if self.db.signal_exists(ACCOUNT_ID, "off_exchange", ticker.upper(), "off_exchange_short"):
+            if (ticker.upper(), "off_exchange_short") in existing:
                 continue
 
             strength = min(short_ratio, 1.0)
@@ -364,7 +381,7 @@ class SignalGenerator:
 
         return signals
 
-    def _process_flights(self) -> list:
+    def _process_flights(self, existing_keys: set = None) -> list:
         """Process corporate flight data (confirmation signal).
 
         Unusual corporate jet activity can indicate M&A due diligence,
@@ -374,6 +391,7 @@ class SignalGenerator:
         if not data:
             return []
 
+        existing = existing_keys or set()
         config = SIGNAL_SOURCES["flights"]
         min_flights = config.get("min_flights", 3)
         signals = []
@@ -390,7 +408,7 @@ class SignalGenerator:
             if len(flights) < min_flights:
                 continue
 
-            if self.db.signal_exists(ACCOUNT_ID, "flights", ticker, "corp_flight"):
+            if (ticker, "corp_flight") in existing:
                 continue
 
             strength = min(len(flights) / 10.0, 1.0)
@@ -416,12 +434,13 @@ class SignalGenerator:
 
         return signals
 
-    def _process_wikipedia(self) -> list:
+    def _process_wikipedia(self, existing_keys: set = None) -> list:
         """Process Wikipedia traffic spikes (confirmation signal)."""
         data = self.quiver.get_wikipedia()
         if not data:
             return []
 
+        existing = existing_keys or set()
         config = SIGNAL_SOURCES["wikipedia"]
         min_multiplier = config.get("min_traffic_multiplier", 3.0)
         signals = []
@@ -437,7 +456,7 @@ class SignalGenerator:
             )
 
             if avg_views > 0 and views / avg_views >= min_multiplier:
-                if self.db.signal_exists(ACCOUNT_ID, "wikipedia", ticker.upper(), "wiki_traffic"):
+                if (ticker.upper(), "wiki_traffic") in existing:
                     continue
 
                 strength = min(views / avg_views / 10, 1.0)
@@ -456,12 +475,13 @@ class SignalGenerator:
 
         return signals
 
-    def _process_wsb(self) -> list:
+    def _process_wsb(self, existing_keys: set = None) -> list:
         """Process WallStreetBets mention spikes (confirmation signal)."""
         data = self.quiver.get_wsb()
         if not data:
             return []
 
+        existing = existing_keys or set()
         config = SIGNAL_SOURCES["wsb"]
         min_multiplier = config.get("min_mention_spike_multiplier", 2.0)
         signals = []
@@ -479,7 +499,7 @@ class SignalGenerator:
             )
 
             if avg_mentions > 0 and mentions / avg_mentions >= min_multiplier:
-                if self.db.signal_exists(ACCOUNT_ID, "wsb", ticker.upper(), "wsb_mention"):
+                if (ticker.upper(), "wsb_mention") in existing:
                     continue
 
                 sentiment = entry.get("Sentiment") or entry.get("sentiment", 0)

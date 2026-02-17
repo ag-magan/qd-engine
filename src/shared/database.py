@@ -51,6 +51,40 @@ class Database:
             logger.error(f"Failed to check signal existence: {e}")
             return False
 
+    def get_existing_signal_keys(self, account_id: str, source: str,
+                                  since_hours: int = 24) -> set:
+        """Batch fetch existing (symbol, signal_type) pairs for a source.
+
+        Returns a set for O(1) dedup lookups instead of one API call per signal.
+        """
+        try:
+            from datetime import timedelta, timezone
+            cutoff = (datetime.now(timezone.utc) - timedelta(hours=since_hours)).isoformat()
+            resp = (
+                self.client.table("signals")
+                .select("symbol,signal_type")
+                .eq("account_id", account_id)
+                .eq("source", source)
+                .gte("created_at", cutoff)
+                .execute()
+            )
+            return {(row["symbol"], row["signal_type"]) for row in resp.data}
+        except Exception as e:
+            logger.error(f"Failed to batch fetch signal keys: {e}")
+            return set()
+
+    def insert_signals_batch(self, signals: list, batch_size: int = 500) -> list:
+        """Insert signals in batches. Returns list of saved rows with IDs."""
+        saved = []
+        for i in range(0, len(signals), batch_size):
+            batch = signals[i:i + batch_size]
+            try:
+                resp = self.client.table("signals").insert(batch).execute()
+                saved.extend(resp.data)
+            except Exception as e:
+                logger.error(f"Failed to insert signal batch ({len(batch)} signals): {e}")
+        return saved
+
     # --- Trades ---
 
     def insert_trade(self, trade: dict) -> Optional[dict]:

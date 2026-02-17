@@ -49,13 +49,15 @@ def run():
             tracker.finalize()
             return
 
-        # Step 2: Save raw signals to DB
+        # Step 2: Save raw signals to DB (batched)
         db = generator.db
-        for signal in raw_signals:
-            saved = db.insert_signal(signal)
-            if saved:
-                signal["id"] = saved["id"]
-                signal["signal_id"] = saved["id"]
+        saved_rows = db.insert_signals_batch(raw_signals)
+        # Map returned IDs back to raw_signals by index
+        for i, saved in enumerate(saved_rows):
+            if i < len(raw_signals):
+                raw_signals[i]["id"] = saved["id"]
+                raw_signals[i]["signal_id"] = saved["id"]
+        logger.info(f"Saved {len(saved_rows)} signals to DB")
 
         # Step 3: Score and rank signals
         scorer = SignalScorer()
