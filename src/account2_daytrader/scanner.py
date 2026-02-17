@@ -1,10 +1,13 @@
 import logging
+import re
 from datetime import datetime, timedelta
 
 import numpy as np
+import requests
 
 from src.shared.alpaca_client import AlpacaClient
 from src.account2_daytrader.config import ACCOUNT_ID, SCANNER
+from src.account2_daytrader.universe import SCAN_UNIVERSE
 from alpaca.data.timeframe import TimeFrame
 from alpaca.data.requests import (
     StockBarsRequest,
@@ -13,18 +16,6 @@ from alpaca.data.requests import (
 
 logger = logging.getLogger(__name__)
 
-# Universe of liquid stocks to scan
-SCAN_UNIVERSE = [
-    "AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "META", "TSLA", "AMD", "NFLX",
-    "BABA", "DIS", "BA", "NIO", "PLTR", "SOFI", "RIVN", "LCID", "COIN",
-    "SNAP", "SQ", "SHOP", "ROKU", "UBER", "LYFT", "DKNG", "HOOD", "MARA",
-    "RIOT", "INTC", "MU", "QCOM", "AVGO", "CRM", "ORCL", "PYPL", "V",
-    "JPM", "BAC", "GS", "WFC", "XOM", "CVX", "PFE", "MRNA", "JNJ",
-    "UNH", "LLY", "ABBV", "BMY", "COST", "WMT", "HD", "LOW", "TGT",
-    "F", "GM", "AAL", "DAL", "UAL", "CCL", "RCL", "ABNB", "MAR",
-    "SPY", "QQQ", "IWM", "DIA", "ARKK",
-]
-
 
 class Scanner:
     """Pre-market and intraday stock scanner using Alpaca market data."""
@@ -32,15 +23,66 @@ class Scanner:
     def __init__(self):
         self.alpaca = AlpacaClient(ACCOUNT_ID)
 
+    def _fetch_dynamic_movers(self) -> list:
+        """Fetch dynamic pre-market movers from Alpaca screener + Yahoo Finance.
+
+        Returns a list of ticker symbols. Failures are non-fatal —
+        falls back to static universe only.
+        """
+        movers = set()
+
+        # Source 1: Alpaca Screener — most actives + market movers
+        try:
+            data = self.alpaca.get_screener_movers(top=20)
+            for key in ("most_actives", "gainers", "losers"):
+                for sym in data.get(key, []):
+                    movers.add(sym)
+            logger.info(f"Alpaca screener returned {len(movers)} movers")
+        except Exception as e:
+            logger.warning(f"Alpaca screener failed (non-fatal): {e}")
+
+        # Source 2: Yahoo Finance gainers (public JSON endpoint, no auth)
+        yahoo_count = 0
+        try:
+            resp = requests.get(
+                "https://finance.yahoo.com/markets/stocks/gainers/",
+                headers={"User-Agent": "Mozilla/5.0"},
+                timeout=10,
+            )
+            if resp.status_code == 200:
+                # Extract ticker symbols from the page content
+                symbols_found = re.findall(
+                    r'/quote/([A-Z]{1,5})(?:/|\?|")', resp.text
+                )
+                for sym in set(symbols_found):
+                    if sym not in ("USD", "US") and len(sym) <= 5:
+                        movers.add(sym)
+                        yahoo_count += 1
+            logger.info(f"Yahoo Finance returned {yahoo_count} gainers")
+        except Exception as e:
+            logger.warning(f"Yahoo Finance scrape failed (non-fatal): {e}")
+
+        logger.info(f"Dynamic movers total: {len(movers)} unique symbols")
+        return list(movers)
+
     def premarket_scan(self) -> list:
         """Scan for stocks with significant pre-market gaps and volume."""
         logger.info("Running pre-market scan...")
+
+        # Merge static universe with dynamic movers
+        dynamic = self._fetch_dynamic_movers()
+        combined = list(dict.fromkeys(SCAN_UNIVERSE + dynamic))  # dedup, preserve order
+        logger.info(
+            f"Scan universe: {len(SCAN_UNIVERSE)} static + "
+            f"{len(dynamic)} dynamic = {len(combined)} unique symbols"
+        )
+
         candidates = []
 
         # Get snapshots in batches
         batch_size = 20
-        for i in range(0, len(SCAN_UNIVERSE), batch_size):
-            batch = SCAN_UNIVERSE[i:i + batch_size]
+        for i in range(0, len(combined), batch_size):
+            batch = combined[i:i + batch_size]
             try:
                 snapshots = self.alpaca.get_snapshots(batch)
                 if not snapshots:
@@ -102,7 +144,7 @@ class Scanner:
 
     def intraday_scan(self, watchlist: list = None) -> list:
         """Scan for intraday setups on watchlist or full universe."""
-        symbols = watchlist or SCAN_UNIVERSE[:30]  # Limit to top 30 for speed
+        symbols = watchlist or SCAN_UNIVERSE[:50]
         candidates = []
 
         batch_size = 10

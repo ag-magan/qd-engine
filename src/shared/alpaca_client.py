@@ -9,7 +9,10 @@ from alpaca.data.requests import (
     StockBarsRequest,
     StockSnapshotRequest,
     StockLatestQuoteRequest,
+    MostActivesRequest,
+    MarketMoversRequest,
 )
+from alpaca.data.historical.screener import ScreenerClient
 from alpaca.data.timeframe import TimeFrame
 
 from src.shared.config import ALPACA_ACCOUNTS, TRADING_MODE
@@ -37,6 +40,15 @@ def get_data_client(account_id: str) -> StockHistoricalDataClient:
     )
 
 
+def get_screener_client(account_id: str) -> ScreenerClient:
+    """Create a ScreenerClient for market movers data."""
+    creds = ALPACA_ACCOUNTS[account_id]
+    return ScreenerClient(
+        api_key=creds["key"],
+        secret_key=creds["secret"],
+    )
+
+
 class AlpacaClient:
     """Unified Alpaca client for a specific account."""
 
@@ -44,6 +56,7 @@ class AlpacaClient:
         self.account_id = account_id
         self.trading = get_trading_client(account_id)
         self.data = get_data_client(account_id)
+        self._screener = None  # lazy init
 
     def get_account(self):
         """Get account information."""
@@ -212,6 +225,36 @@ class AlpacaClient:
         except Exception as e:
             logger.error(f"Failed to get latest quotes: {e}")
             return None
+
+    def get_screener_movers(self, top: int = 20) -> dict:
+        """Get most active stocks and top gainers/losers from Alpaca Screener.
+
+        Returns dict with keys 'most_actives', 'gainers', 'losers',
+        each a list of symbol strings.
+        """
+        try:
+            if self._screener is None:
+                self._screener = get_screener_client(self.account_id)
+
+            result = {"most_actives": [], "gainers": [], "losers": []}
+
+            actives = self._screener.get_most_actives(
+                MostActivesRequest(top=top)
+            )
+            if actives and actives.most_actives:
+                result["most_actives"] = [s.symbol for s in actives.most_actives]
+
+            movers = self._screener.get_market_movers(
+                MarketMoversRequest(top=top)
+            )
+            if movers:
+                result["gainers"] = [m.symbol for m in (movers.gainers or [])]
+                result["losers"] = [m.symbol for m in (movers.losers or [])]
+
+            return result
+        except Exception as e:
+            logger.warning(f"Screener API failed (non-fatal): {e}")
+            return {"most_actives": [], "gainers": [], "losers": []}
 
     def get_invested_value(self) -> float:
         """Calculate total market value of current positions."""
