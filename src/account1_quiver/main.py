@@ -29,6 +29,12 @@ def run():
         config = ACCOUNT_CONFIGS[ACCOUNT_ID]
         min_confidence = config.get("min_claude_confidence", 65)
 
+        # Step 0: Execute any queued orders from previous off-hours runs
+        executor = Executor()
+        queued_executed = executor.execute_queued_orders()
+        if queued_executed:
+            logger.info(f"Executed {len(queued_executed)} queued orders from previous run")
+
         # Step 1: Generate signals from all sources
         generator = SignalGenerator()
         try:
