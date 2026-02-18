@@ -34,7 +34,7 @@ SUPABASE_KEY = os.getenv("SUPABASE_KEY", "")
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 CLAUDE_MODELS = {
     "haiku": "claude-haiku-4-5-20251001",
-    "sonnet": "claude-sonnet-4-5-20250929",
+    "sonnet": "claude-sonnet-4-6",
     "opus": "claude-opus-4-6",
 }
 CLAUDE_MODEL = CLAUDE_MODELS["sonnet"]  # Default for backward compat
