@@ -17,23 +17,29 @@ class MomentumBreakout(BaseStrategy):
         if not config["enabled"]:
             return None
 
-        if "momentum" not in candidate.get("setups", []):
+        setups = candidate.get("setups", [])
+        is_long = "momentum" in setups
+        is_short = "momentum_short" in setups
+
+        if not is_long and not is_short:
             return None
 
         volume_ratio = candidate.get("volume_ratio", 0)
         if volume_ratio < config["min_volume_ratio"]:
             return None
 
+        side = "buy" if is_long else "sell"
         entry = candidate["current_price"]
-        target = self.calculate_target(entry, config["target_pct"], "buy")
-        stop = self.calculate_stop(entry, config["stop_pct"], "buy")
+        target = self.calculate_target(entry, config["target_pct"], side)
+        stop = self.calculate_stop(entry, config["stop_pct"], side)
 
         # Confidence based on volume strength
         confidence = min(50 + int(volume_ratio * 10), 90)
 
+        direction = "breakout" if is_long else "breakdown"
         return {
             "symbol": candidate["symbol"],
-            "side": "buy",
+            "side": side,
             "entry_price": entry,
             "target_price": target,
             "stop_price": stop,
@@ -42,7 +48,7 @@ class MomentumBreakout(BaseStrategy):
             "strategy": self.name,
             "confidence": confidence,
             "reasoning": (
-                f"Momentum breakout: volume {volume_ratio:.1f}x avg, "
+                f"Momentum {direction}: volume {volume_ratio:.1f}x avg, "
                 f"RSI {candidate.get('rsi', 'N/A')}"
             ),
         }

@@ -15,6 +15,8 @@ STRATEGIES = {
         "enabled": True,
         "target_pct": 3.0,
         "stop_pct": 1.5,
+        "trail_activate_pct": 1.0,
+        "trail_offset_pct": 0.5,
         "min_volume_ratio": 1.5,
         "timeframe": "5Min",
     },
@@ -23,12 +25,17 @@ STRATEGIES = {
         "min_gap_pct": 3.0,
         "target_fill_pct": 70.0,  # Target: gap fills 70%
         "stop_pct": 2.0,
+        "trail_activate_pct": 1.5,
+        "trail_offset_pct": 0.75,
     },
     "mean_reversion": {
         "enabled": True,
         "rsi_oversold": 30,
+        "rsi_overbought": 70,
         "target_pct": 2.5,
         "stop_pct": 1.0,
+        "trail_activate_pct": 0.75,
+        "trail_offset_pct": 0.4,
         "min_volume_spike": 1.5,
     },
     "vwap_bounce": {
@@ -36,12 +43,16 @@ STRATEGIES = {
         "vwap_proximity_pct": 1.0,  # Within 1.0% of VWAP
         "target_pct": 1.75,
         "stop_pct": 0.75,
+        "trail_activate_pct": 0.5,
+        "trail_offset_pct": 0.3,
     },
     "trending": {
         "enabled": True,
         "target_pct": 2.0,
         "stop_pct": 1.0,
-        "min_sma_spread_pct": 0.1,  # SMA10 must be 0.1%+ above SMA20
+        "trail_activate_pct": 0.75,
+        "trail_offset_pct": 0.4,
+        "min_sma_spread_pct": 0.1,  # SMA10 must be 0.1%+ from SMA20
     },
 }
 

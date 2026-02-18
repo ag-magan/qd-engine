@@ -317,6 +317,80 @@ class AutonomousExecutor:
             "reason": review.get("reasoning", ""),
         }
 
+    def check_thesis_exits(self) -> list:
+        """Mechanical enforcement of thesis stop/target prices.
+
+        No Claude calls. Checks current price against the stop_loss and
+        target_price stored in the theses table at entry time.
+        Also checks time_horizon_days for stale positions.
+        """
+        if not self.alpaca.is_market_open():
+            return []
+
+        positions = self.alpaca.get_positions()
+        open_theses = self.db.get_open_theses(ACCOUNT_ID)
+        thesis_map = {t["symbol"]: t for t in open_theses}
+        closed = []
+
+        for pos in positions:
+            symbol = pos.symbol
+            current_price = float(pos.current_price)
+            thesis = thesis_map.get(symbol)
+
+            if not thesis:
+                continue
+
+            stop_price = float(thesis.get("stop_loss") or 0)
+            target_price = float(thesis.get("target_price") or 0)
+            horizon_days = thesis.get("time_horizon_days")
+
+            exit_reason = None
+
+            # Check stop loss (price-based)
+            if stop_price > 0 and current_price <= stop_price:
+                exit_reason = "guardian_stop_loss"
+
+            # Check target price
+            elif target_price > 0 and current_price >= target_price:
+                exit_reason = "guardian_target_hit"
+
+            # Check time horizon
+            elif horizon_days:
+                entry_date = thesis.get("entry_date")
+                if entry_date:
+                    entry_dt = datetime.fromisoformat(
+                        str(entry_date).replace("Z", "+00:00")
+                    )
+                    days_held = (datetime.now(timezone.utc) - entry_dt).days
+                    if days_held >= int(horizon_days):
+                        exit_reason = "guardian_time_expired"
+
+            if exit_reason:
+                logger.info(
+                    f"Guardian exit: {symbol} {exit_reason} "
+                    f"(price={current_price}, stop={stop_price}, "
+                    f"target={target_price})"
+                )
+                review = {
+                    "symbol": symbol,
+                    "action": "close",
+                    "reasoning": (
+                        f"Guardian auto-exit: {exit_reason} "
+                        f"(price={current_price}, stop={stop_price}, "
+                        f"target={target_price})"
+                    ),
+                }
+                result = self._close_position(review)
+                if result:
+                    closed.append(result)
+
+        if closed:
+            logger.info(f"Guardian closed {len(closed)} positions")
+        else:
+            logger.info(f"Guardian check: {len(positions)} positions OK")
+
+        return closed
+
     def execute_monitor_actions(self, monitor_result: dict) -> list:
         """Execute actions from midday position monitoring."""
         closed = []

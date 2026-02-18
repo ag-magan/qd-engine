@@ -92,11 +92,17 @@ class DecisionEngine:
                 if p.get("confidence", 0) >= self.config.get("min_confidence", 60)
             ]
 
-            # Validate thesis length
+            # Validate thesis length and stop/target prices
             for pos in result["new_positions"]:
                 if len(pos.get("thesis", "")) < 100:
                     logger.warning(
                         f"Thesis too short for {pos['symbol']}, skipping"
+                    )
+                    pos["confidence"] = 0  # Disable
+                elif not pos.get("target_price") or not pos.get("stop_loss"):
+                    logger.warning(
+                        f"Missing stop/target for {pos['symbol']}, skipping "
+                        f"(guardian needs prices to enforce)"
                     )
                     pos["confidence"] = 0  # Disable
 

@@ -5,7 +5,10 @@ from datetime import datetime, timedelta, timezone
 from src.shared.alpaca_client import AlpacaClient
 from src.shared.risk_manager import RiskManager
 from src.shared.database import Database
-from src.account1_quiver.config import ACCOUNT_ID, SIGNAL_MAX_AGE_HOURS
+from src.account1_quiver.config import (
+    ACCOUNT_ID, SIGNAL_MAX_AGE_HOURS,
+    DEFAULT_STOP_LOSS_PCT, DEFAULT_TARGET_RETURN_PCT, DEFAULT_TIME_HORIZON_DAYS,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -184,6 +187,9 @@ class Executor:
             "strategy": "quiver_composite",
             "signal_id": signal.get("signal_id"),
             "reasoning": signal.get("thesis", signal.get("reasoning", "")),
+            "stop_loss_pct": signal.get("stop_loss_pct"),
+            "target_return_pct": signal.get("target_return_pct"),
+            "time_horizon_days": signal.get("time_horizon_days"),
         }
         db_trade = self.db.insert_trade(trade_record)
 
@@ -210,6 +216,109 @@ class Executor:
                 self.db.client.table("signals").update(
                     {"acted_on": False, "skip_reason": reason}
                 ).eq("id", raw_signal["id"]).execute()
+
+    def check_exit_conditions(self) -> list:
+        """Check open positions against stored stop/target/time parameters.
+
+        Called every cron cycle. Exits positions that have:
+        1. Hit their stop loss percentage
+        2. Hit their target return percentage
+        3. Exceeded their time horizon
+        """
+        if not self.alpaca.is_market_open():
+            return []
+
+        positions = self.alpaca.get_positions()
+        open_trades = self.db.get_open_trades(ACCOUNT_ID)
+        closed = []
+
+        for pos in positions:
+            symbol = pos.symbol
+            trade = next((t for t in open_trades if t["symbol"] == symbol), None)
+            if not trade:
+                continue
+
+            unrealized_pnl_pct = float(pos.unrealized_plpc) * 100
+
+            stop_pct = float(trade["stop_loss_pct"]) if trade.get("stop_loss_pct") else DEFAULT_STOP_LOSS_PCT
+            target_pct = float(trade["target_return_pct"]) if trade.get("target_return_pct") else DEFAULT_TARGET_RETURN_PCT
+            horizon_days = int(trade["time_horizon_days"]) if trade.get("time_horizon_days") else DEFAULT_TIME_HORIZON_DAYS
+
+            exit_reason = None
+
+            # Check stop loss
+            if unrealized_pnl_pct <= -abs(stop_pct):
+                exit_reason = "stop_loss"
+
+            # Check target return
+            elif unrealized_pnl_pct >= abs(target_pct):
+                exit_reason = "target_hit"
+
+            # Check time horizon expiry
+            elif trade.get("created_at"):
+                entry_time = datetime.fromisoformat(
+                    str(trade["created_at"]).replace("Z", "+00:00")
+                )
+                days_held = (datetime.now(timezone.utc) - entry_time).days
+                if days_held >= horizon_days:
+                    exit_reason = "time_horizon_expired"
+
+            if exit_reason:
+                logger.info(
+                    f"Exit triggered for {symbol}: {exit_reason} "
+                    f"(pnl={unrealized_pnl_pct:.2f}%, stop=-{stop_pct}%, "
+                    f"target=+{target_pct}%)"
+                )
+                self._close_and_record(pos, trade, exit_reason)
+                closed.append({"symbol": symbol, "reason": exit_reason})
+
+        if closed:
+            logger.info(f"Exit check: closed {len(closed)} positions")
+        else:
+            logger.info(f"Exit check: {len(positions)} positions OK")
+
+        return closed
+
+    def _close_and_record(self, position, trade: dict, exit_reason: str) -> None:
+        """Close a position and record the outcome."""
+        symbol = position.symbol
+        entry_price = float(position.avg_entry_price)
+        current_price = float(position.current_price)
+        realized_pnl = float(position.unrealized_pl)
+        pnl_pct = float(position.unrealized_plpc) * 100
+
+        # Close position via Alpaca
+        self.alpaca.close_position(symbol)
+
+        # Update trade status
+        if trade and trade.get("id"):
+            self.db.update_trade(trade["id"], {
+                "status": "closed",
+                "fill_price": current_price,
+                "filled_at": datetime.now(timezone.utc).isoformat(),
+            })
+
+        # Record trade outcome
+        outcome = {
+            "trade_id": trade["id"] if trade else None,
+            "account_id": ACCOUNT_ID,
+            "symbol": symbol,
+            "strategy": trade.get("strategy", "quiver_composite") if trade else "quiver_composite",
+            "entry_price": entry_price,
+            "exit_price": current_price,
+            "entry_date": trade.get("created_at") if trade else None,
+            "exit_date": datetime.now(timezone.utc).isoformat(),
+            "realized_pnl": round(realized_pnl, 2),
+            "pnl_pct": round(pnl_pct, 2),
+            "outcome": "win" if realized_pnl > 0 else "loss",
+            "exit_reason": exit_reason,
+        }
+        self.db.insert_trade_outcome(outcome)
+
+        logger.info(
+            f"Closed {symbol}: P&L=${realized_pnl:.2f} ({pnl_pct:.2f}%), "
+            f"reason={exit_reason}"
+        )
 
     def execute_rebalance(self, actions: list) -> list:
         """Execute rebalancing trades."""

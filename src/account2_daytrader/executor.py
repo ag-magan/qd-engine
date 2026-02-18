@@ -19,6 +19,7 @@ class DayTraderExecutor:
         self.alpaca = AlpacaClient(ACCOUNT_ID)
         self.risk = RiskManager(ACCOUNT_ID)
         self.db = Database()
+        self._high_water_marks = {}  # symbol -> highest unrealized P&L % seen
 
     def execute_setup(self, setup: dict) -> dict:
         """Execute a trading setup after all risk checks pass."""
@@ -85,23 +86,19 @@ class DayTraderExecutor:
         }
 
     def manage_positions(self) -> list:
-        """Check open positions against stops and targets."""
+        """Check open positions against stops, targets, and trailing stops."""
         positions = self.alpaca.get_positions()
+        open_trades = self.db.get_open_trades(ACCOUNT_ID)
         actions = []
 
         for pos in positions:
             symbol = pos.symbol
-            current_price = float(pos.current_price)
-            entry_price = float(pos.avg_entry_price)
             unrealized_pnl_pct = float(pos.unrealized_plpc) * 100
 
-            # Find the corresponding trade record for stop/target info
-            trades = self.db.get_open_trades(ACCOUNT_ID)
             trade = next(
-                (t for t in trades if t["symbol"] == symbol),
+                (t for t in open_trades if t["symbol"] == symbol),
                 None,
             )
-
             if not trade:
                 continue
 
@@ -109,6 +106,8 @@ class DayTraderExecutor:
             config = STRATEGIES.get(strategy, {})
             target_pct = config.get("target_pct", 2.0)
             stop_pct = config.get("stop_pct", 1.0)
+            trail_activate = config.get("trail_activate_pct")
+            trail_offset = config.get("trail_offset_pct")
 
             # Check adaptive stop override
             adaptive = self.db.get_adaptive_config(
@@ -117,14 +116,32 @@ class DayTraderExecutor:
             if adaptive:
                 stop_pct = float(adaptive[0]["value"])
 
-            # Check stop loss
-            if unrealized_pnl_pct <= -stop_pct:
+            # Update high-water mark
+            prev_high = self._high_water_marks.get(symbol, 0)
+            if unrealized_pnl_pct > prev_high:
+                self._high_water_marks[symbol] = unrealized_pnl_pct
+            current_high = self._high_water_marks.get(symbol, 0)
+
+            # Determine effective stop (trailing or fixed)
+            effective_stop = -stop_pct  # Default: fixed stop
+            if (trail_activate and trail_offset
+                    and current_high >= trail_activate):
+                trailing_stop = current_high - trail_offset
+                # Trailing stop can only be BETTER than fixed stop
+                if trailing_stop > effective_stop:
+                    effective_stop = trailing_stop
+
+            # Check stop loss (fixed or trailing)
+            if unrealized_pnl_pct <= effective_stop:
+                reason = "trailing_stop" if effective_stop > -stop_pct else "stop_loss"
                 logger.info(
-                    f"STOP HIT: {symbol} at {unrealized_pnl_pct:.2f}% "
-                    f"(stop: -{stop_pct}%)"
+                    f"{reason.upper()}: {symbol} at {unrealized_pnl_pct:.2f}% "
+                    f"(effective stop: {effective_stop:.2f}%, "
+                    f"high: {current_high:.2f}%)"
                 )
-                self._close_and_record(pos, trade, "stop_loss")
-                actions.append({"symbol": symbol, "action": "stop_loss"})
+                self._close_and_record(pos, trade, reason)
+                self._high_water_marks.pop(symbol, None)
+                actions.append({"symbol": symbol, "action": reason})
 
             # Check profit target
             elif unrealized_pnl_pct >= target_pct:
@@ -133,12 +150,20 @@ class DayTraderExecutor:
                     f"(target: +{target_pct}%)"
                 )
                 self._close_and_record(pos, trade, "target_hit")
+                self._high_water_marks.pop(symbol, None)
                 actions.append({"symbol": symbol, "action": "target_hit"})
+
+        # Clean up high-water marks for closed positions
+        open_symbols = {pos.symbol for pos in positions}
+        for sym in list(self._high_water_marks.keys()):
+            if sym not in open_symbols:
+                del self._high_water_marks[sym]
 
         return actions
 
     def force_close_all(self) -> list:
         """Force close all positions (EOD)."""
+        self._high_water_marks.clear()
         positions = self.alpaca.get_positions()
         closed = []
 

@@ -144,6 +144,29 @@ def run_eod():
         tracker.finalize()
 
 
+def run_guardian():
+    """Guardian check: enforce thesis stop/target prices without Claude calls."""
+    tracker = HealthTracker("autonomous-guardian", ACCOUNT_ID)
+    try:
+        logger.info("=== Account 3: Guardian Check ===")
+        executor = AutonomousExecutor()
+        closed = executor.check_thesis_exits()
+
+        if closed:
+            logger.info(f"Guardian closed {len(closed)} positions: {closed}")
+        else:
+            logger.info("Guardian: all positions within bounds")
+
+        logger.info("=== Account 3: Guardian Check Complete ===")
+
+    except Exception as e:
+        tracker.add_error("System", f"Guardian error: {e}", "Guardian check failed")
+        logger.exception("Fatal error in guardian check")
+
+    finally:
+        tracker.finalize()
+
+
 def run():
     """Entry point with mode selection."""
     mode = sys.argv[1] if len(sys.argv) > 1 else "decision"
@@ -154,6 +177,8 @@ def run():
         run_monitor()
     elif mode == "eod":
         run_eod()
+    elif mode == "guardian":
+        run_guardian()
     else:
         logger.error(f"Unknown mode: {mode}")
         sys.exit(1)

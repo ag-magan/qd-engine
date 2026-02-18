@@ -88,3 +88,8 @@ MIN_COMPOSITE_SCORE = 15
 
 # Maximum age of signals to consider (hours)
 SIGNAL_MAX_AGE_HOURS = 48
+
+# Default exit parameters (used when Claude doesn't specify or for pre-existing positions)
+DEFAULT_STOP_LOSS_PCT = 8.0
+DEFAULT_TARGET_RETURN_PCT = 15.0
+DEFAULT_TIME_HORIZON_DAYS = 30

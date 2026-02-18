@@ -202,19 +202,26 @@ class Scanner:
         # Detect setups
         setups = []
 
-        # Momentum: price near recent high with above-average volume
+        # Momentum: price near recent high/low with above-average volume
         recent_high = max(highs[-20:])
+        recent_low = min(lows[-20:])
         if current_price > recent_high * 0.99 and current_volume > avg_volume * 1.5:
             setups.append("momentum")
+        elif current_price < recent_low * 1.01 and current_volume > avg_volume * 1.5:
+            setups.append("momentum_short")
 
-        # Mean reversion: RSI oversold with volume confirmation
+        # Mean reversion: RSI oversold/overbought with volume confirmation
         if rsi < 40 and current_volume > avg_volume * 1.2:
             setups.append("mean_reversion")
+        elif rsi > 70 and current_volume > avg_volume * 1.2:
+            setups.append("mean_reversion_short")
 
-        # VWAP bounce: price near and above VWAP
+        # VWAP bounce/rejection: price near VWAP
         vwap_dist = abs(current_price - vwap) / vwap * 100
         if vwap_dist < 1.0 and current_price > vwap:
             setups.append("vwap_bounce")
+        elif vwap_dist < 1.0 and current_price < vwap:
+            setups.append("vwap_rejection")
 
         # Gap fill opportunity
         prev_close = float(snapshot.previous_daily_bar.close) if snapshot.previous_daily_bar else None
@@ -223,11 +230,13 @@ class Scanner:
             if abs(gap_pct) > 1.5:
                 setups.append("gap_fill")
 
-        # Trending: price above short MA above longer MA (most common pattern)
+        # Trending: price following short MA vs longer MA
         sma_10 = np.mean(closes[-10:])
         sma_20 = np.mean(closes[-20:])
         if current_price > sma_10 > sma_20 and current_volume >= avg_volume:
             setups.append("trending")
+        elif current_price < sma_10 < sma_20 and current_volume >= avg_volume:
+            setups.append("trending_short")
 
         logger.debug(
             f"{symbol}: price={current_price:.2f} RSI={rsi:.1f} "

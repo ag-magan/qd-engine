@@ -17,7 +17,11 @@ class VWAPBounce(BaseStrategy):
         if not config["enabled"]:
             return None
 
-        if "vwap_bounce" not in candidate.get("setups", []):
+        setups = candidate.get("setups", [])
+        is_long = "vwap_bounce" in setups
+        is_short = "vwap_rejection" in setups
+
+        if not is_long and not is_short:
             return None
 
         current_price = candidate.get("current_price")
@@ -25,21 +29,26 @@ class VWAPBounce(BaseStrategy):
         if not vwap or not current_price:
             return None
 
-        # Price should be above VWAP (bounce confirmed)
         vwap_dist = (current_price - vwap) / vwap * 100
-        if vwap_dist < 0 or vwap_dist > config["vwap_proximity_pct"]:
+        abs_dist = abs(vwap_dist)
+
+        # Validate proximity
+        if abs_dist > config["vwap_proximity_pct"]:
             return None
 
+        side = "buy" if is_long else "sell"
         entry = current_price
-        target = self.calculate_target(entry, config["target_pct"], "buy")
-        stop = self.calculate_stop(entry, config["stop_pct"], "buy")
+        target = self.calculate_target(entry, config["target_pct"], side)
+        stop = self.calculate_stop(entry, config["stop_pct"], side)
 
         # Closer to VWAP = higher confidence
-        confidence = min(60 + int((config["vwap_proximity_pct"] - vwap_dist) * 100), 80)
+        confidence = min(60 + int((config["vwap_proximity_pct"] - abs_dist) * 100), 80)
 
+        direction = "bounce" if is_long else "rejection"
+        position = "above" if vwap_dist > 0 else "below"
         return {
             "symbol": candidate["symbol"],
-            "side": "buy",
+            "side": side,
             "entry_price": entry,
             "target_price": target,
             "stop_price": stop,
@@ -48,7 +57,7 @@ class VWAPBounce(BaseStrategy):
             "strategy": self.name,
             "confidence": confidence,
             "reasoning": (
-                f"VWAP bounce: price {vwap_dist:.2f}% above VWAP ${vwap}, "
+                f"VWAP {direction}: price {abs_dist:.2f}% {position} VWAP ${vwap}, "
                 f"volume {candidate.get('volume_ratio', 'N/A')}x"
             ),
         }

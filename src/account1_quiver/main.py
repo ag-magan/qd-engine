@@ -35,6 +35,11 @@ def run():
         if queued_executed:
             logger.info(f"Executed {len(queued_executed)} queued orders from previous run")
 
+        # Step 0.5: Check exit conditions on existing positions
+        exit_actions = executor.check_exit_conditions()
+        if exit_actions:
+            logger.info(f"Exit conditions triggered: {exit_actions}")
+
         # Step 1: Generate signals from all sources
         generator = SignalGenerator()
         try:
