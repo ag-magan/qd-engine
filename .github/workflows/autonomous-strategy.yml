@@ -2,12 +2,9 @@ name: Process C
 
 on:
   schedule:
-    - cron: '0 15 * * 1-5'     # 10 AM ET — decision
-    - cron: '0 17 * * 1-5'     # 12 PM ET — guardian
-    - cron: '0 18 * * 1-5'     # 1 PM ET  — monitor
-    - cron: '0 19 * * 1-5'     # 2 PM ET  — guardian
-    - cron: '0 20 * * 1-5'     # 3 PM ET  — guardian
-    - cron: '30 21 * * 1-5'    # 4:30 PM ET — eod
+    - cron: '0 15 * * 1-5'     # 10 AM ET — decision (+ guardian)
+    - cron: '0 18 * * 1-5'     # 1 PM ET  — monitor (+ guardian)
+    - cron: '30 21 * * 1-5'    # 4:30 PM ET — eod (+ guardian)
   workflow_dispatch:
     inputs:
       mode:
@@ -41,7 +38,7 @@ jobs:
               echo "mode=decision" >> $GITHUB_OUTPUT
             elif [ "$HOUR" = "18" ]; then
               echo "mode=monitor" >> $GITHUB_OUTPUT
-            elif [ "$HOUR" = "21" ]; then
+            elif [ "$HOUR" = "21" ] || [ "$HOUR" = "22" ]; then
               echo "mode=eod" >> $GITHUB_OUTPUT
             else
               echo "mode=guardian" >> $GITHUB_OUTPUT

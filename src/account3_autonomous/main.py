@@ -15,11 +15,28 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+def _run_guardian_check():
+    """Run guardian stop/target enforcement. Called from each mode since
+    GitHub Actions silently skips standalone guardian cron entries."""
+    try:
+        executor = AutonomousExecutor()
+        closed = executor.check_thesis_exits()
+        if closed:
+            logger.info(f"Guardian closed {len(closed)} positions: {closed}")
+        return closed
+    except Exception as e:
+        logger.error(f"Guardian check failed: {e}")
+        return []
+
+
 def run_decision():
     """Morning decision phase: gather context, let Claude decide."""
     tracker = HealthTracker("autonomous-decision", ACCOUNT_ID)
     try:
         logger.info("=== Account 3: Autonomous Decision Phase ===")
+
+        # Guardian check on existing positions before new decisions
+        _run_guardian_check()
 
         # Step 0: Execute any queued orders from previous off-hours runs
         executor = AutonomousExecutor()
@@ -78,6 +95,9 @@ def run_monitor():
     try:
         logger.info("=== Account 3: Position Monitor ===")
 
+        # Guardian check before Claude review
+        _run_guardian_check()
+
         # Build portfolio summary for monitoring
         briefing_builder = MarketBriefing()
         portfolio_summary = (
@@ -116,6 +136,9 @@ def run_eod():
     tracker = HealthTracker("autonomous-eod", ACCOUNT_ID)
     try:
         logger.info("=== Account 3: EOD Review ===")
+
+        # Final guardian check before EOD review
+        _run_guardian_check()
 
         # Evaluate any theses for recently closed trades
         thesis_tracker = ThesisTracker()
