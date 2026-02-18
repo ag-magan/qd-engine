@@ -41,7 +41,7 @@ Respond with ONLY a valid JSON object:
     "position_reviews": [
         {
             "symbol": "<ticker>",
-            "action": "hold" | "close" | "add",
+            "action": "hold" | "close",
             "reasoning": "<why>",
             "updated_target": <new target or null>,
             "updated_stop": <new stop or null>

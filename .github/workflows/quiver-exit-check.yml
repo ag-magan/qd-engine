@@ -1,14 +1,17 @@
-name: Process B
+name: Process A Exit Check
 
 on:
   schedule:
-    - cron: '30 13 * * 1-5'
+    - cron: '0 16 * * 1-5'     # 11 AM ET
+    - cron: '0 17 * * 1-5'     # 12 PM ET
+    - cron: '0 19 * * 1-5'     # 2 PM ET
+    - cron: '0 20 * * 1-5'     # 3 PM ET
   workflow_dispatch:
 
 jobs:
   run:
     runs-on: ubuntu-latest
-    timeout-minutes: 540
+    timeout-minutes: 10
 
     steps:
       - uses: actions/checkout@v4
@@ -20,14 +23,13 @@ jobs:
       - name: Install
         run: pip install -r requirements.txt
 
-      - name: Run
+      - name: Exit Check
         env:
-          ALPACA_ACCT2_PAPER_KEY: ${{ secrets.ALPACA_ACCT2_PAPER_KEY }}
-          ALPACA_ACCT2_PAPER_SECRET: ${{ secrets.ALPACA_ACCT2_PAPER_SECRET }}
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          ALPACA_ACCT1_PAPER_KEY: ${{ secrets.ALPACA_ACCT1_PAPER_KEY }}
+          ALPACA_ACCT1_PAPER_SECRET: ${{ secrets.ALPACA_ACCT1_PAPER_SECRET }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
           GMAIL_ADDRESS: ${{ secrets.GMAIL_ADDRESS }}
           GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
           TRADING_MODE: paper
-        run: python -m src.account2_daytrader.main loop
+        run: python -m src.account1_quiver.main exit_check

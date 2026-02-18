@@ -176,5 +176,27 @@ def run():
         tracker.finalize()
 
 
+def run_exit_check():
+    """Lightweight exit-only check — no signals, no Claude calls."""
+    tracker = HealthTracker("quiver-exit-check", ACCOUNT_ID)
+    try:
+        logger.info("=== Account 1: Exit Check ===")
+        executor = Executor()
+        actions = executor.check_exit_conditions()
+        if actions:
+            logger.info(f"Exit check triggered: {actions}")
+        else:
+            logger.info("Exit check: all positions within bounds")
+        logger.info("=== Account 1: Exit Check Complete ===")
+    except Exception as e:
+        tracker.add_error("System", f"Exit check error: {e}", "Exit check failed")
+        logger.exception("Fatal error in exit check")
+    finally:
+        tracker.finalize()
+
+
 if __name__ == "__main__":
-    run()
+    if len(sys.argv) > 1 and sys.argv[1] == "exit_check":
+        run_exit_check()
+    else:
+        run()
