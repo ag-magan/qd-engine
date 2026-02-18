@@ -24,6 +24,7 @@ STRATEGIES = {
         "enabled": True,
         "min_gap_pct": 3.0,
         "target_fill_pct": 70.0,  # Target: gap fills 70%
+        "target_pct": 2.5,  # Percentage-based target for position management
         "stop_pct": 2.0,
         "trail_activate_pct": 1.5,
         "trail_offset_pct": 0.75,

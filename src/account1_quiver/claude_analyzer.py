@@ -3,6 +3,7 @@ import logging
 
 from src.shared.claude_client import ClaudeClient
 from src.shared.database import Database
+from src.shared.alpaca_client import AlpacaClient
 from src.account1_quiver.config import ACCOUNT_ID
 
 logger = logging.getLogger(__name__)
@@ -36,6 +37,7 @@ class ClaudeAnalyzer:
     def __init__(self):
         self.claude = ClaudeClient(account_id=ACCOUNT_ID)
         self.db = Database()
+        self.alpaca = AlpacaClient(ACCOUNT_ID)
 
     def analyze_signal(self, scored_signal: dict, portfolio_state: dict) -> dict:
         """Analyze a scored signal with Claude, providing full context."""
@@ -46,11 +48,32 @@ class ClaudeAnalyzer:
         learnings = self.db.get_learnings(ACCOUNT_ID)
         past_trades = self.db.get_trade_outcomes(ACCOUNT_ID, limit=20)
 
+        # Fetch current market data for the symbol
+        price_context = ""
+        try:
+            snapshots = self.alpaca.get_snapshots([symbol])
+            snap = snapshots.get(symbol) if snapshots else None
+            if snap and snap.latest_trade:
+                current_price = float(snap.latest_trade.price)
+                prev_close = float(snap.previous_daily_bar.close) if snap.previous_daily_bar else None
+                if prev_close:
+                    daily_change = ((current_price - prev_close) / prev_close) * 100
+                    price_context = (
+                        f"Current Price: ${current_price:.2f}\n"
+                        f"Previous Close: ${prev_close:.2f}\n"
+                        f"Daily Change: {daily_change:+.2f}%"
+                    )
+                else:
+                    price_context = f"Current Price: ${current_price:.2f}"
+        except Exception as e:
+            logger.debug(f"Failed to fetch price data for {symbol}: {e}")
+
         # Filter past trades for this symbol
         symbol_trades = [t for t in past_trades if t.get("symbol") == symbol]
 
         context = self._build_context(
-            scored_signal, portfolio_state, scorecard, learnings, symbol_trades
+            scored_signal, portfolio_state, scorecard, learnings, symbol_trades,
+            price_context=price_context,
         )
 
         result = self.claude.analyze(
@@ -79,6 +102,7 @@ class ClaudeAnalyzer:
         scorecard: list,
         learnings: list,
         symbol_trades: list,
+        price_context: str = "",
     ) -> str:
         """Build the full context prompt for Claude."""
         # Signal details
@@ -137,6 +161,9 @@ class ClaudeAnalyzer:
 
 {signal_summary}
 Signal Details:{raw_details}
+
+CURRENT MARKET DATA:
+{price_context or '  Price data unavailable.'}
 
 SIGNAL SOURCE TRACK RECORD:
 {scorecard_summary or '  No historical data yet.'}

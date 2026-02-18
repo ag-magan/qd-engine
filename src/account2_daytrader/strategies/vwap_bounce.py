@@ -41,8 +41,8 @@ class VWAPBounce(BaseStrategy):
         target = self.calculate_target(entry, config["target_pct"], side)
         stop = self.calculate_stop(entry, config["stop_pct"], side)
 
-        # Closer to VWAP = higher confidence
-        confidence = min(60 + int((config["vwap_proximity_pct"] - abs_dist) * 100), 80)
+        # Closer to VWAP = higher confidence (scale by proximity)
+        confidence = min(60 + int((config["vwap_proximity_pct"] - abs_dist) * 30), 80)
 
         direction = "bounce" if is_long else "rejection"
         position = "above" if vwap_dist > 0 else "below"

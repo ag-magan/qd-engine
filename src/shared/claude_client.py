@@ -90,37 +90,52 @@ class ClaudeClient:
 
         Set thinking=True to enable extended thinking (budget_tokens) on Sonnet/Haiku.
         """
+        import time as _time
+
         model_id = CLAUDE_MODELS[model]
-        try:
-            params = {
-                "model": model_id,
-                "max_tokens": max_tokens,
-                "system": system_prompt,
-                "messages": [{"role": "user", "content": user_prompt}],
-            }
-            if thinking and model != "opus":
-                params["thinking"] = {"type": "enabled", "budget_tokens": thinking_budget}
-                # API requires max_tokens > budget_tokens
-                if params["max_tokens"] <= thinking_budget:
-                    params["max_tokens"] = thinking_budget + max_tokens
+        max_retries = 2
+        for attempt in range(max_retries + 1):
+            try:
+                params = {
+                    "model": model_id,
+                    "max_tokens": max_tokens,
+                    "system": system_prompt,
+                    "messages": [{"role": "user", "content": user_prompt}],
+                }
+                if thinking and model != "opus":
+                    params["thinking"] = {"type": "enabled", "budget_tokens": thinking_budget}
+                    # API requires max_tokens > budget_tokens
+                    if params["max_tokens"] <= thinking_budget:
+                        params["max_tokens"] = thinking_budget + max_tokens
 
-            message = self.client.messages.create(**params)
+                message = self.client.messages.create(**params)
 
-            response_text = self._extract_text(message)
-            tokens_used = message.usage.input_tokens + message.usage.output_tokens
-            self._log(model_id, analysis_type, user_prompt, response_text, tokens_used)
+                response_text = self._extract_text(message)
+                tokens_used = message.usage.input_tokens + message.usage.output_tokens
+                self._log(model_id, analysis_type, user_prompt, response_text, tokens_used)
 
-            if expect_json:
-                parsed = self._parse_json(response_text)
-                if parsed is None:
-                    logger.error("Failed to parse JSON from Claude response")
-                return parsed
-            else:
-                return {"text": response_text, "tokens_used": tokens_used}
+                if expect_json:
+                    parsed = self._parse_json(response_text)
+                    if parsed is None:
+                        logger.error("Failed to parse JSON from Claude response")
+                    return parsed
+                else:
+                    return {"text": response_text, "tokens_used": tokens_used}
 
-        except Exception as e:
-            logger.error(f"Claude API call failed ({model_id}): {e}")
-            return None
+            except anthropic.APIStatusError as e:
+                if "overloaded" in str(e).lower() and attempt < max_retries:
+                    wait = [5, 15][attempt]
+                    logger.warning(
+                        f"Claude overloaded, retrying in {wait}s "
+                        f"(attempt {attempt + 1}/{max_retries})"
+                    )
+                    _time.sleep(wait)
+                    continue
+                logger.error(f"Claude API call failed ({model_id}): {e}")
+                return None
+            except Exception as e:
+                logger.error(f"Claude API call failed ({model_id}): {e}")
+                return None
 
     def quick_decision(self, context: str, model: str = "haiku") -> Optional[dict]:
         """Fast yes/no trade decision. Haiku, no thinking. Returns parsed JSON."""

@@ -181,7 +181,11 @@ class DayTraderExecutor:
         return closed
 
     def _close_and_record(self, position, trade: dict, exit_reason: str) -> None:
-        """Close a position and record the outcome."""
+        """Close a position and record the outcome.
+
+        Note: P&L is recorded from unrealized_pl before the close order fills.
+        Actual fill price may differ slightly due to slippage on market orders.
+        """
         symbol = position.symbol
         entry_price = float(position.avg_entry_price)
         current_price = float(position.current_price)

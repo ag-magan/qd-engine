@@ -5,9 +5,13 @@ from datetime import datetime, timedelta
 import numpy as np
 import requests
 
+import pytz
+
 from src.shared.alpaca_client import AlpacaClient
-from src.account2_daytrader.config import ACCOUNT_ID, SCANNER
+from src.account2_daytrader.config import ACCOUNT_ID, SCANNER, STRATEGIES
 from src.account2_daytrader.universe import SCAN_UNIVERSE
+
+ET = pytz.timezone("US/Eastern")
 from alpaca.data.timeframe import TimeFrame
 from alpaca.data.requests import (
     StockBarsRequest,
@@ -190,10 +194,32 @@ class Scanner:
         current_volume = volumes[-1]
         avg_volume = np.mean(volumes[-20:]) if len(volumes) >= 20 else np.mean(volumes)
 
-        # Calculate VWAP
-        typical_prices = [(h + l + c) / 3 for h, l, c in zip(highs, lows, closes)]
-        cum_tp_vol = sum(tp * v for tp, v in zip(typical_prices, volumes))
-        cum_vol = sum(volumes)
+        # Calculate VWAP using today's session bars only
+        today_open = datetime.now(ET).replace(hour=9, minute=30, second=0, microsecond=0)
+        today_idx = []
+        for idx, b in enumerate(bars):
+            try:
+                bar_time = b.timestamp
+                if hasattr(bar_time, 'astimezone'):
+                    bar_et = bar_time.astimezone(ET)
+                else:
+                    bar_et = datetime.fromisoformat(str(bar_time)).astimezone(ET)
+                if bar_et >= today_open:
+                    today_idx.append(idx)
+            except Exception:
+                pass
+
+        if len(today_idx) >= 5:
+            v_highs = [highs[i] for i in today_idx]
+            v_lows = [lows[i] for i in today_idx]
+            v_closes = [closes[i] for i in today_idx]
+            v_volumes = [volumes[i] for i in today_idx]
+        else:
+            v_highs, v_lows, v_closes, v_volumes = highs, lows, closes, volumes
+
+        typical_prices = [(h + l + c) / 3 for h, l, c in zip(v_highs, v_lows, v_closes)]
+        cum_tp_vol = sum(tp * v for tp, v in zip(typical_prices, v_volumes))
+        cum_vol = sum(v_volumes)
         vwap = cum_tp_vol / cum_vol if cum_vol > 0 else current_price
 
         # Calculate RSI
@@ -211,9 +237,10 @@ class Scanner:
             setups.append("momentum_short")
 
         # Mean reversion: RSI oversold/overbought with volume confirmation
-        if rsi < 40 and current_volume > avg_volume * 1.2:
+        mr_config = STRATEGIES.get("mean_reversion", {})
+        if rsi < mr_config.get("rsi_oversold", 30) and current_volume > avg_volume * 1.2:
             setups.append("mean_reversion")
-        elif rsi > 70 and current_volume > avg_volume * 1.2:
+        elif rsi > mr_config.get("rsi_overbought", 70) and current_volume > avg_volume * 1.2:
             setups.append("mean_reversion_short")
 
         # VWAP bounce/rejection: price near VWAP
@@ -261,7 +288,7 @@ class Scanner:
 
     @staticmethod
     def _calculate_rsi(closes: list, period: int = 14) -> float:
-        """Calculate RSI from closing prices."""
+        """Calculate RSI using Wilder's smoothing."""
         if len(closes) < period + 1:
             return 50.0  # Default neutral
 
@@ -269,8 +296,13 @@ class Scanner:
         gains = [d if d > 0 else 0 for d in deltas]
         losses = [-d if d < 0 else 0 for d in deltas]
 
-        avg_gain = np.mean(gains[-period:])
-        avg_loss = np.mean(losses[-period:])
+        # Wilder's smoothing: seed with simple mean, then exponential
+        avg_gain = np.mean(gains[:period])
+        avg_loss = np.mean(losses[:period])
+
+        for i in range(period, len(gains)):
+            avg_gain = (avg_gain * (period - 1) + gains[i]) / period
+            avg_loss = (avg_loss * (period - 1) + losses[i]) / period
 
         if avg_loss == 0:
             return 100.0

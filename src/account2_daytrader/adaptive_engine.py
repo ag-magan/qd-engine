@@ -188,6 +188,7 @@ class AdaptiveEngine:
     def should_cooldown(self) -> bool:
         """Check if trading should pause due to behavioral flags."""
         outcomes = self.db.get_trade_outcomes(ACCOUNT_ID, limit=10)
+        outcomes.sort(key=lambda o: o.get("exit_date", ""), reverse=True)
         consecutive_losses = 0
         for o in outcomes:
             if float(o.get("realized_pnl", 0) or 0) < 0:

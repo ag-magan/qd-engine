@@ -83,11 +83,15 @@ def run():
         # Step 4: Get portfolio state for Claude context
         working_capital = risk.get_working_capital()
         invested = risk.get_invested_amount()
+        daily_pnl = sum(
+            float(pos.unrealized_intraday_pl)
+            for pos in risk.alpaca.get_positions()
+        )
         portfolio_state = {
             "working_capital": round(working_capital, 2),
             "invested": round(invested, 2),
             "position_count": risk.alpaca.get_position_count(),
-            "daily_pnl": 0,
+            "daily_pnl": round(daily_pnl, 2),
         }
 
         # Step 5: Claude analyzes top signals

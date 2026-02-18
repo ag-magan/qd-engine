@@ -411,17 +411,28 @@ class Database:
 
     def create_pie(self, pie: dict, allocations: list) -> Optional[dict]:
         try:
-            # Deactivate existing pies for this account
-            self.client.table("pies").update(
-                {"is_active": False}
-            ).eq("account_id", pie["account_id"]).eq("is_active", True).execute()
+            account_id = pie["account_id"]
 
+            # Insert new pie as inactive (old pie stays active if this fails)
+            pie["is_active"] = False
             resp = self.client.table("pies").insert(pie).execute()
             pie_data = resp.data[0]
 
+            # Insert allocations
             for alloc in allocations:
                 alloc["pie_id"] = pie_data["id"]
             self.client.table("pie_allocations").insert(allocations).execute()
+
+            # Deactivate old pies (new pie is inactive, so won't be affected)
+            self.client.table("pies").update(
+                {"is_active": False}
+            ).eq("account_id", account_id).eq("is_active", True).execute()
+
+            # Activate new pie
+            self.client.table("pies").update(
+                {"is_active": True}
+            ).eq("id", pie_data["id"]).execute()
+            pie_data["is_active"] = True
 
             return pie_data
         except Exception as e:

@@ -98,11 +98,11 @@ jobs:
         run: python -m pytest tests/ -v
 
       - name: Commit and push to main
-        if: steps.fetch.outputs.count != '0'
+        if: success() && steps.fetch.outputs.count != '0'
         run: |
           git config user.name "qd-engine-bot"
           git config user.email "bot@qd-engine"
-          git add -A
+          git add src/ tests/
           if git diff --staged --quiet; then
             echo "No changes to commit"
           else

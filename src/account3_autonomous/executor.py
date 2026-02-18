@@ -82,6 +82,12 @@ class AutonomousExecutor:
                     result = self._close_position(review)
                     if result:
                         results["closed"].append(result)
+                elif review["action"] == "add":
+                    logger.warning(
+                        f"'add' action requested for {review['symbol']} "
+                        f"but position scaling not yet supported. Treating as hold."
+                    )
+                    results["held"].append(review["symbol"])
                 else:
                     results["held"].append(review["symbol"])
             except Exception as e:
@@ -120,8 +126,7 @@ class AutonomousExecutor:
                 self._mark_order_executed(order_row["id"])
                 executed.append(result)
             else:
-                # Mark as executed even if risk checks reject it
-                self._mark_order_executed(order_row["id"])
+                self._mark_order_executed(order_row["id"], status="failed")
 
         logger.info(f"Executed {len(executed)}/{len(pending)} queued orders")
         return executed
@@ -175,13 +180,15 @@ class AutonomousExecutor:
             logger.error(f"Failed to fetch pending orders: {e}")
             return []
 
-    def _mark_order_executed(self, order_id: str) -> None:
-        """Mark a pending order as executed."""
+    def _mark_order_executed(self, order_id: str, status: str = "executed") -> None:
+        """Mark a pending order with the given status."""
         try:
-            self.db.client.table("pending_orders").update({
-                "status": "executed",
-                "executed_at": datetime.now(timezone.utc).isoformat(),
-            }).eq("id", order_id).execute()
+            updates = {"status": status}
+            if status == "executed":
+                updates["executed_at"] = datetime.now(timezone.utc).isoformat()
+            self.db.client.table("pending_orders").update(
+                updates
+            ).eq("id", order_id).execute()
         except Exception as e:
             logger.error(f"Failed to update pending order {order_id}: {e}")
 
@@ -260,7 +267,11 @@ class AutonomousExecutor:
         }
 
     def _close_position(self, review: dict) -> dict:
-        """Close an existing position."""
+        """Close an existing position.
+
+        Note: P&L is recorded from unrealized_pl before the close order fills.
+        Actual fill price may differ slightly due to slippage on market orders.
+        """
         symbol = review["symbol"]
 
         # Get current position info before closing
@@ -330,6 +341,8 @@ class AutonomousExecutor:
         positions = self.alpaca.get_positions()
         open_theses = self.db.get_open_theses(ACCOUNT_ID)
         thesis_map = {t["symbol"]: t for t in open_theses}
+        open_trades = self.db.get_open_trades(ACCOUNT_ID)
+        trade_map = {t["symbol"]: t for t in open_trades}
         closed = []
 
         for pos in positions:
@@ -344,15 +357,22 @@ class AutonomousExecutor:
             target_price = float(thesis.get("target_price") or 0)
             horizon_days = thesis.get("time_horizon_days")
 
+            # Determine trade direction for correct stop/target comparison
+            trade = trade_map.get(symbol)
+            side = trade.get("side", "buy") if trade else "buy"
+
             exit_reason = None
 
-            # Check stop loss (price-based)
-            if stop_price > 0 and current_price <= stop_price:
-                exit_reason = "guardian_stop_loss"
-
-            # Check target price
-            elif target_price > 0 and current_price >= target_price:
-                exit_reason = "guardian_target_hit"
+            if side == "buy":  # Long position
+                if stop_price > 0 and current_price <= stop_price:
+                    exit_reason = "guardian_stop_loss"
+                elif target_price > 0 and current_price >= target_price:
+                    exit_reason = "guardian_target_hit"
+            else:  # Short position
+                if stop_price > 0 and current_price >= stop_price:
+                    exit_reason = "guardian_stop_loss"
+                elif target_price > 0 and current_price <= target_price:
+                    exit_reason = "guardian_target_hit"
 
             # Check time horizon
             elif horizon_days:

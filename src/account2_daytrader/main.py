@@ -169,6 +169,11 @@ def run_intraday_cycle(watchlist: list, market_context: dict,
                             continue
                     except Exception as e:
                         logger.warning(f"Claude eval failed, proceeding with setup: {e}")
+                else:
+                    logger.info(
+                        f"Auto-executing high-confidence setup: {setup['symbol']} "
+                        f"({setup['strategy']}, confidence={setup['confidence']})"
+                    )
 
                 result = executor.execute_setup(setup)
                 if result.get("status") == "executed":
@@ -229,9 +234,25 @@ def run_loop():
         # Phase 3: Intraday loop
         no_new_trades_time = time_str_to_today(NO_NEW_TRADES)
         force_close_time = time_str_to_today(FORCE_CLOSE)
+        last_watchlist_refresh = get_et_now()
+        WATCHLIST_REFRESH_SECONDS = 1800  # 30 minutes
 
         while get_et_now() < force_close_time:
             now = get_et_now()
+
+            # Refresh watchlist with mid-day movers periodically
+            if (now < no_new_trades_time
+                    and (now - last_watchlist_refresh).total_seconds() >= WATCHLIST_REFRESH_SECONDS):
+                try:
+                    refresh_scanner = Scanner()
+                    new_movers = refresh_scanner._fetch_dynamic_movers()
+                    added = [s for s in new_movers if s not in watchlist]
+                    if added:
+                        watchlist.extend(added)
+                        logger.info(f"Watchlist refresh: added {len(added)} mid-day movers")
+                except Exception as e:
+                    logger.warning(f"Watchlist refresh failed: {e}")
+                last_watchlist_refresh = now
 
             if now < no_new_trades_time:
                 # Scan for new setups

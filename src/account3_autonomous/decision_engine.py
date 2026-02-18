@@ -3,16 +3,17 @@ import logging
 
 from src.shared.claude_client import ClaudeClient
 from src.shared.config import ACCOUNT_CONFIGS
+from src.shared.risk_manager import RiskManager
 from src.account3_autonomous.config import ACCOUNT_ID
 
 logger = logging.getLogger(__name__)
 
-DECISION_SYSTEM = """You are an autonomous portfolio strategist with full discretion over trading decisions. You receive comprehensive market context and must decide what to trade, hold, or close.
+DECISION_SYSTEM_TEMPLATE = """You are an autonomous portfolio strategist with full discretion over trading decisions. You receive comprehensive market context and must decide what to trade, hold, or close.
 
 RULES:
-- You manage $10,000 working capital (grows/shrinks with P&L)
+- You manage ${working_capital} working capital (grows/shrinks with P&L)
 - Max 75% invested at any time
-- Max 15% per position ($1,500 max)
+- Max 15% per position
 - Max 8 positions, max 6 new trades per day
 - Min 6h holding period (allows tactical exits on thesis invalidation)
 - Max 30 day holding period
@@ -73,11 +74,17 @@ class DecisionEngine:
     def __init__(self):
         self.claude = ClaudeClient(account_id=ACCOUNT_ID)
         self.config = ACCOUNT_CONFIGS[ACCOUNT_ID]
+        self.risk = RiskManager(ACCOUNT_ID)
 
     def make_daily_decisions(self, briefing: str) -> dict:
         """Morning decision: Claude reviews everything and decides what to trade."""
+        working_capital = self.risk.get_working_capital()
+        system_prompt = DECISION_SYSTEM_TEMPLATE.replace(
+            "${working_capital}",
+            f"{working_capital:,.0f}",
+        )
         result = self.claude.strategic_review(
-            system_prompt=DECISION_SYSTEM,
+            system_prompt=system_prompt,
             user_prompt=briefing,
             model="opus",
             effort="high",

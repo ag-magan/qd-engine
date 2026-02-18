@@ -148,13 +148,19 @@ class RiskManager:
         working_capital = self.get_working_capital()
         max_daily_loss = working_capital * max_daily_risk_pct
 
-        todays_trades = self.db.get_todays_trades(self.account_id)
-        todays_pnl = sum(
-            float(t.get("fill_price", 0) or 0) * float(t.get("qty", 0) or 0)
-            * (-1 if t.get("side") == "sell" else 1)
-            for t in todays_trades
-            if t.get("status") in ["filled", "partially_filled"]
-        )
+        # Realized P&L from today's closed trades
+        from datetime import date
+        todays_pnl = 0.0
+        try:
+            outcomes = self.db.get_trade_outcomes(self.account_id, limit=100)
+            today_str = date.today().isoformat()
+            todays_pnl = sum(
+                float(o.get("realized_pnl", 0) or 0)
+                for o in outcomes
+                if (o.get("exit_date") or "")[:10] == today_str
+            )
+        except Exception as e:
+            logger.error(f"Failed to get today's realized P&L: {e}")
 
         # Also include unrealized from open positions
         unrealized = 0.0

@@ -72,7 +72,7 @@ class Executor:
                 self._mark_order_executed(order_row["id"])
                 executed.append(result)
             else:
-                self._mark_order_executed(order_row["id"])
+                self._mark_order_executed(order_row["id"], status="failed")
 
         logger.info(f"Executed {len(executed)}/{len(pending)} queued orders")
         return executed
@@ -128,13 +128,15 @@ class Executor:
             logger.error(f"Failed to fetch pending orders: {e}")
             return []
 
-    def _mark_order_executed(self, order_id: str) -> None:
-        """Mark a pending order as executed."""
+    def _mark_order_executed(self, order_id: str, status: str = "executed") -> None:
+        """Mark a pending order with the given status."""
         try:
-            self.db.client.table("pending_orders").update({
-                "status": "executed",
-                "executed_at": datetime.now(timezone.utc).isoformat(),
-            }).eq("id", order_id).execute()
+            updates = {"status": status}
+            if status == "executed":
+                updates["executed_at"] = datetime.now(timezone.utc).isoformat()
+            self.db.client.table("pending_orders").update(
+                updates
+            ).eq("id", order_id).execute()
         except Exception as e:
             logger.error(f"Failed to update pending order {order_id}: {e}")
 
@@ -147,11 +149,11 @@ class Executor:
             self._record_skip(signal, "Claude recommended skip")
             return None
 
-        # Calculate position size
+        # Calculate position size (use Claude's size_pct as sole scaler)
         confidence = signal.get("confidence", 50)
         size_pct = signal.get("position_size_pct", 0.5)
-        position_size = self.risk.calculate_position_size(symbol, confidence)
-        position_size *= size_pct
+        max_position = self.risk.calculate_position_size(symbol, confidence=100)
+        position_size = max_position * size_pct
 
         # Enforce minimum position size
         if position_size < 1.0:
@@ -280,7 +282,11 @@ class Executor:
         return closed
 
     def _close_and_record(self, position, trade: dict, exit_reason: str) -> None:
-        """Close a position and record the outcome."""
+        """Close a position and record the outcome.
+
+        Note: P&L is recorded from unrealized_pl before the close order fills.
+        Actual fill price may differ slightly due to slippage on market orders.
+        """
         symbol = position.symbol
         entry_price = float(position.avg_entry_price)
         current_price = float(position.current_price)
