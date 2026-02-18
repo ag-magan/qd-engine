@@ -1,4 +1,5 @@
 import logging
+import time
 from typing import Tuple, Optional
 
 from src.shared.config import STARTING_CAPITAL, ACCOUNT_CONFIGS
@@ -16,25 +17,46 @@ class RiskManager:
     The remaining $90k in each paper account is OFF LIMITS.
     """
 
+    _REALIZED_PNL_CACHE_TTL = 300  # 5 minutes
+
     def __init__(self, account_id: str):
         self.account_id = account_id
         self.config = ACCOUNT_CONFIGS[account_id]
         self.db = Database()
         self.alpaca = AlpacaClient(account_id)
+        self._realized_pnl_cache = None
+        self._realized_pnl_cache_time = 0.0
+
+    def _get_realized_pnl(self) -> float:
+        """Get realized P&L with in-memory TTL cache.
+
+        The expensive DB query (fetches all trade outcomes) only runs
+        once per TTL period. Safe because realized P&L only changes
+        when a trade closes, which is infrequent relative to the
+        2-minute check cycles.
+        """
+        now = time.monotonic()
+        if (self._realized_pnl_cache is not None
+                and now - self._realized_pnl_cache_time < self._REALIZED_PNL_CACHE_TTL):
+            return self._realized_pnl_cache
+
+        try:
+            outcomes = self.db.get_trade_outcomes(self.account_id, limit=10000)
+            pnl = sum(float(o.get("realized_pnl", 0) or 0) for o in outcomes)
+        except Exception as e:
+            logger.error(f"Failed to calculate realized P&L: {e}")
+            return self._realized_pnl_cache if self._realized_pnl_cache is not None else 0.0
+
+        self._realized_pnl_cache = pnl
+        self._realized_pnl_cache_time = now
+        return pnl
 
     def get_working_capital(self) -> float:
         """Calculate working capital: starting_capital + cumulative P&L."""
         starting = self.config["starting_capital"]
+        realized_pnl = self._get_realized_pnl()
 
-        # Sum realized P&L from trade outcomes
-        realized_pnl = 0.0
-        try:
-            outcomes = self.db.get_trade_outcomes(self.account_id, limit=10000)
-            realized_pnl = sum(float(o.get("realized_pnl", 0) or 0) for o in outcomes)
-        except Exception as e:
-            logger.error(f"Failed to calculate realized P&L: {e}")
-
-        # Unrealized P&L from current positions
+        # Unrealized P&L from current positions (always live)
         unrealized_pnl = 0.0
         try:
             positions = self.alpaca.get_positions()

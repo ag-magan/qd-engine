@@ -57,6 +57,24 @@ class PortfolioTracker:
                 prev_equity = float(prev.get("equity", STARTING_CAPITAL))
                 daily_pnl = equity - prev_equity
 
+            # Fetch Alpaca's reported equity for drift tracking
+            alpaca_equity = None
+            try:
+                account = self.alpaca.get_account()
+                # Paper accounts have $100k total; we isolate $10k working capital
+                # Alpaca equity = full account equity, our equity = working capital
+                alpaca_equity = round(float(account.equity), 2)
+                expected_alpaca = round(90000 + equity, 2)
+                drift = abs(alpaca_equity - expected_alpaca)
+                if drift > 10:
+                    logger.warning(
+                        f"Equity drift for {self.account_id}: "
+                        f"Alpaca=${alpaca_equity}, expected=${expected_alpaca}, "
+                        f"drift=${drift:.2f}"
+                    )
+            except Exception as e:
+                logger.error(f"Failed to fetch Alpaca equity: {e}")
+
             snapshot = {
                 "account_id": self.account_id,
                 "equity": round(equity, 2),
@@ -65,12 +83,14 @@ class PortfolioTracker:
                 "daily_pnl": round(daily_pnl, 2),
                 "total_pnl": round(total_pnl, 2),
                 "snapshot_date": date.today().isoformat(),
+                "alpaca_equity": alpaca_equity,
             }
 
             self.db.upsert_snapshot(snapshot)
             logger.info(
                 f"Snapshot for {self.account_id}: equity=${equity:.2f}, "
                 f"daily_pnl=${daily_pnl:.2f}, total_pnl=${total_pnl:.2f}"
+                + (f", alpaca_equity=${alpaca_equity}" if alpaca_equity else "")
             )
             return snapshot
 
