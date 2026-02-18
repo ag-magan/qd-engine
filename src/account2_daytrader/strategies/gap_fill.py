@@ -52,7 +52,7 @@ class GapFill(BaseStrategy):
             "entry_price": current_price,
             "target_price": target_price,
             "stop_price": stop_price,
-            "target_pct": config["target_fill_pct"],
+            "target_pct": config["target_pct"],
             "stop_pct": config["stop_pct"],
             "strategy": self.name,
             "confidence": confidence,

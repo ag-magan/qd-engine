@@ -4,7 +4,7 @@ import logging
 from src.shared.claude_client import ClaudeClient
 from src.shared.config import ACCOUNT_CONFIGS
 from src.shared.risk_manager import RiskManager
-from src.account3_autonomous.config import ACCOUNT_ID
+from src.account3_autonomous.config import ACCOUNT_ID, MIN_THESIS_LENGTH
 
 logger = logging.getLogger(__name__)
 
@@ -96,12 +96,12 @@ class DecisionEngine:
             # Filter out low-confidence positions
             result["new_positions"] = [
                 p for p in new_positions
-                if p.get("confidence", 0) >= self.config.get("min_confidence", 60)
+                if p.get("confidence", 0) >= self.config.get("min_confidence", 50)
             ]
 
             # Validate thesis length and stop/target prices
             for pos in result["new_positions"]:
-                if len(pos.get("thesis", "")) < 100:
+                if len(pos.get("thesis", "")) < MIN_THESIS_LENGTH:
                     logger.warning(
                         f"Thesis too short for {pos['symbol']}, skipping"
                     )

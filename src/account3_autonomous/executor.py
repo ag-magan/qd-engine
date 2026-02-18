@@ -89,6 +89,11 @@ class AutonomousExecutor:
                     )
                     results["held"].append(review["symbol"])
                 else:
+                    if review["action"] != "hold":
+                        logger.warning(
+                            f"Unrecognized action '{review['action']}' for "
+                            f"{review['symbol']}, treating as hold."
+                        )
                     results["held"].append(review["symbol"])
             except Exception as e:
                 logger.error(f"Failed to process review for {review['symbol']}: {e}")
@@ -204,9 +209,9 @@ class AutonomousExecutor:
             logger.info(f"Max daily trades reached ({count}). Skipping {symbol}.")
             return None
 
-        # Calculate position size
-        position_size = self.risk.calculate_position_size(symbol, confidence)
-        position_size *= size_pct
+        # Calculate position size (use Claude's size_pct as sole scaler)
+        max_position = self.risk.calculate_position_size(symbol, confidence=100)
+        position_size = max_position * size_pct
 
         if position_size < 1.0:
             logger.info(f"Position too small for {symbol}: ${position_size:.2f}")
@@ -374,8 +379,8 @@ class AutonomousExecutor:
                 elif target_price > 0 and current_price <= target_price:
                     exit_reason = "guardian_target_hit"
 
-            # Check time horizon
-            elif horizon_days:
+            # Check time horizon (independent of stop/target)
+            if not exit_reason and horizon_days:
                 entry_date = thesis.get("entry_date")
                 if entry_date:
                     entry_dt = datetime.fromisoformat(

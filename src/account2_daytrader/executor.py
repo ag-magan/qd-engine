@@ -167,9 +167,10 @@ class DayTraderExecutor:
         positions = self.alpaca.get_positions()
         closed = []
 
+        trades = self.db.get_open_trades(ACCOUNT_ID)
+
         for pos in positions:
             symbol = pos.symbol
-            trades = self.db.get_open_trades(ACCOUNT_ID)
             trade = next((t for t in trades if t["symbol"] == symbol), None)
 
             self._close_and_record(pos, trade, "eod_close")
