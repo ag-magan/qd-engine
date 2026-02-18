@@ -116,10 +116,12 @@ def run_premarket():
             tracker.add_error("Claude", str(e), "No pre-market briefing available")
             briefing = {}
 
-        # Build watchlist from briefing
-        watchlist = [s["symbol"] for s in briefing.get("top_setups", [])]
+        # Build watchlist: Claude's picks + all pre-market candidates
+        claude_picks = [s["symbol"] for s in briefing.get("top_setups", [])]
+        all_candidate_symbols = [c["symbol"] for c in candidates]
+        watchlist = claude_picks + [s for s in all_candidate_symbols if s not in claude_picks]
         if not watchlist:
-            watchlist = [c["symbol"] for c in candidates[:10]]
+            watchlist = [c["symbol"] for c in candidates[:30]]
 
         logger.info(f"Watchlist: {watchlist}")
         tracker.finalize()

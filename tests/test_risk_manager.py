@@ -101,10 +101,10 @@ class TestDayTraderRisk(unittest.TestCase):
         self.assertTrue(can)
 
     def test_max_trades_per_day(self):
-        self.mock_db.get_todays_trades.return_value = [{}] * 12
+        self.mock_db.get_todays_trades.return_value = [{}] * 20
         can, count = self.risk.check_max_trades_per_day()
         self.assertFalse(can)
-        self.assertEqual(count, 12)
+        self.assertEqual(count, 20)
 
 
 if __name__ == "__main__":

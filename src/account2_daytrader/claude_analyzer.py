@@ -11,7 +11,7 @@ BRIEFING_SYSTEM = """You are an intraday trading analyst providing a pre-market 
 
 Your briefing should:
 1. Rank the candidate stocks by trade quality
-2. Identify the best 2-5 setups for the day
+2. Identify your best setups for the day (up to 15)
 3. Note any market conditions that affect strategy selection
 4. Flag stocks to avoid
 
@@ -52,7 +52,7 @@ class DayTraderClaudeAnalyzer:
 
         # Build context
         candidates_summary = ""
-        for c in candidates[:15]:  # Limit to top 15
+        for c in candidates[:30]:  # Show Claude up to 30 candidates
             candidates_summary += (
                 f"  {c['symbol']}: gap={c.get('gap_pct', 'N/A')}%, "
                 f"vol_ratio={c.get('volume_ratio', 'N/A')}, "
