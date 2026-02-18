@@ -202,26 +202,38 @@ class Scanner:
         # Detect setups
         setups = []
 
-        # Momentum: price breaking recent high with volume
+        # Momentum: price near recent high with above-average volume
         recent_high = max(highs[-20:])
-        if current_price > recent_high * 0.998 and current_volume > avg_volume * 2:
+        if current_price > recent_high * 0.99 and current_volume > avg_volume * 1.5:
             setups.append("momentum")
 
-        # Mean reversion: RSI oversold with volume spike
-        if rsi < 30 and current_volume > avg_volume * 1.5:
+        # Mean reversion: RSI oversold with volume confirmation
+        if rsi < 40 and current_volume > avg_volume * 1.2:
             setups.append("mean_reversion")
 
-        # VWAP bounce: price near VWAP
+        # VWAP bounce: price near and above VWAP
         vwap_dist = abs(current_price - vwap) / vwap * 100
-        if vwap_dist < 0.3 and current_price > vwap:
+        if vwap_dist < 1.0 and current_price > vwap:
             setups.append("vwap_bounce")
 
         # Gap fill opportunity
         prev_close = float(snapshot.previous_daily_bar.close) if snapshot.previous_daily_bar else None
         if prev_close:
             gap_pct = ((current_price - prev_close) / prev_close) * 100
-            if abs(gap_pct) > 3.0:
+            if abs(gap_pct) > 1.5:
                 setups.append("gap_fill")
+
+        # Trending: price above short MA above longer MA (most common pattern)
+        sma_10 = np.mean(closes[-10:])
+        sma_20 = np.mean(closes[-20:])
+        if current_price > sma_10 > sma_20 and current_volume >= avg_volume:
+            setups.append("trending")
+
+        logger.debug(
+            f"{symbol}: price={current_price:.2f} RSI={rsi:.1f} "
+            f"vol_ratio={current_volume / avg_volume:.1f}x "
+            f"vwap_dist={vwap_dist:.2f}% setups={setups}"
+        )
 
         if not setups:
             return None
@@ -232,6 +244,8 @@ class Scanner:
             "vwap": round(vwap, 2),
             "rsi": round(rsi, 1),
             "volume_ratio": round(current_volume / avg_volume, 2) if avg_volume > 0 else 0,
+            "sma_10": round(sma_10, 2),
+            "sma_20": round(sma_20, 2),
             "setups": setups,
             "prev_close": prev_close,
         }

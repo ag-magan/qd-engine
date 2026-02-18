@@ -20,6 +20,7 @@ from src.account2_daytrader.strategies.momentum import MomentumBreakout
 from src.account2_daytrader.strategies.mean_reversion import MeanReversion
 from src.account2_daytrader.strategies.gap_fill import GapFill
 from src.account2_daytrader.strategies.vwap_bounce import VWAPBounce
+from src.account2_daytrader.strategies.trending import TrendFollowing
 
 logging.basicConfig(
     level=logging.INFO,
@@ -34,6 +35,7 @@ STRATEGY_CLASSES = {
     "gap_fill": GapFill,
     "mean_reversion": MeanReversion,
     "vwap_bounce": VWAPBounce,
+    "trending": TrendFollowing,
 }
 
 
@@ -58,7 +60,7 @@ def load_strategies() -> list:
 
     if not defs:
         logger.info("No strategy definitions in DB, using hardcoded defaults")
-        return [MomentumBreakout(), MeanReversion(), GapFill(), VWAPBounce()]
+        return [MomentumBreakout(), MeanReversion(), GapFill(), VWAPBounce(), TrendFollowing()]
 
     strategies = []
     for defn in defs:
@@ -78,7 +80,7 @@ def load_strategies() -> list:
 
     if not strategies:
         logger.warning("All DB strategies unrecognized, falling back to defaults")
-        return [MomentumBreakout(), MeanReversion(), GapFill(), VWAPBounce()]
+        return [MomentumBreakout(), MeanReversion(), GapFill(), VWAPBounce(), TrendFollowing()]
 
     logger.info(f"Active strategies: {[s.name for s in strategies]}")
     return strategies

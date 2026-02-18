@@ -33,9 +33,15 @@ STRATEGIES = {
     },
     "vwap_bounce": {
         "enabled": True,
-        "vwap_proximity_pct": 0.3,  # Within 0.3% of VWAP
+        "vwap_proximity_pct": 1.0,  # Within 1.0% of VWAP
         "target_pct": 1.75,
         "stop_pct": 0.75,
+    },
+    "trending": {
+        "enabled": True,
+        "target_pct": 2.0,
+        "stop_pct": 1.0,
+        "min_sma_spread_pct": 0.1,  # SMA10 must be 0.1%+ above SMA20
     },
 }
 
