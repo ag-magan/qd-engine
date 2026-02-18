@@ -94,7 +94,7 @@ def run():
         analyzer = ClaudeAnalyzer()
         approved_signals = []
 
-        for scored in scored_signals[:10]:  # Analyze top 10 at most
+        for scored in scored_signals[:20]:  # Analyze top 20 at most
             try:
                 analysis = analyzer.analyze_signal(scored, portfolio_state)
                 if not analysis:
