@@ -152,13 +152,19 @@ class Scanner:
         candidates = []
 
         batch_size = 10
+        bars_found = 0
+        snaps_found = 0
+        too_few_bars = 0
+        setups_detected = {}
+
         for i in range(0, len(symbols), batch_size):
             batch = symbols[i:i + batch_size]
             try:
                 bars_data = self.alpaca.get_bars(
-                    batch, TimeFrame.Minute, limit=100
+                    batch, TimeFrame.Minute, limit=200
                 )
                 if not bars_data:
+                    logger.warning(f"No bars data for batch starting {batch[0]}")
                     continue
 
                 snapshots = self.alpaca.get_snapshots(batch)
@@ -167,15 +173,37 @@ class Scanner:
                     try:
                         symbol_bars = bars_data.get(symbol) if bars_data else None
                         snap = snapshots.get(symbol) if snapshots else None
-                        if symbol_bars and snap:
-                            setup = self._detect_intraday_setup(symbol, symbol_bars, snap)
-                            if setup:
-                                candidates.append(setup)
+
+                        if symbol_bars:
+                            bars_found += 1
+                        if snap:
+                            snaps_found += 1
+
+                        if not symbol_bars or not snap:
+                            continue
+
+                        bar_count = len(symbol_bars)
+                        if bar_count < 20:
+                            too_few_bars += 1
+                            continue
+
+                        setup = self._detect_intraday_setup(symbol, symbol_bars, snap)
+                        if setup:
+                            candidates.append(setup)
+                            for s in setup.get("setups", []):
+                                setups_detected[s] = setups_detected.get(s, 0) + 1
                     except Exception as e:
-                        logger.debug(f"Intraday eval failed for {symbol}: {e}")
+                        logger.info(f"Intraday eval failed for {symbol}: {e}")
 
             except Exception as e:
                 logger.error(f"Intraday scan batch failed: {e}")
+
+        if not candidates:
+            logger.info(
+                f"Scan diagnostics: {len(symbols)} symbols, "
+                f"bars_found={bars_found}, snaps_found={snaps_found}, "
+                f"too_few_bars={too_few_bars}"
+            )
 
         logger.info(f"Intraday scan found {len(candidates)} setups")
         return candidates
@@ -265,14 +293,14 @@ class Scanner:
         elif current_price < sma_10 < sma_20 and current_volume >= avg_volume:
             setups.append("trending_short")
 
-        logger.debug(
-            f"{symbol}: price={current_price:.2f} RSI={rsi:.1f} "
+        if not setups:
+            return None
+
+        logger.info(
+            f"Setup detected {symbol}: price={current_price:.2f} RSI={rsi:.1f} "
             f"vol_ratio={current_volume / avg_volume:.1f}x "
             f"vwap_dist={vwap_dist:.2f}% setups={setups}"
         )
-
-        if not setups:
-            return None
 
         return {
             "symbol": symbol,
