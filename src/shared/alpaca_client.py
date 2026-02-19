@@ -100,6 +100,22 @@ class AlpacaClient:
         """Submit a market order by notional amount or quantity."""
         try:
             order_side = OrderSide.BUY if side.lower() == "buy" else OrderSide.SELL
+
+            # Alpaca doesn't support notional short sells — convert to qty
+            if notional is not None and side.lower() == "sell":
+                try:
+                    quotes = self.get_latest_quotes([symbol])
+                    price = float(quotes[symbol].ask_price or quotes[symbol].bid_price)
+                    qty = int(notional / price)
+                    if qty < 1:
+                        logger.warning(f"Short sell qty < 1 for {symbol} (${notional}/{price}), skipping")
+                        return None
+                    logger.info(f"Converted ${notional:.0f} to {qty} shares for short sell {symbol} @ ${price:.2f}")
+                    notional = None
+                except Exception as e:
+                    logger.error(f"Cannot convert notional to qty for short {symbol}: {e}")
+                    return None
+
             params = {
                 "symbol": symbol,
                 "side": order_side,
