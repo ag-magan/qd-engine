@@ -59,6 +59,7 @@ ACCOUNT_CONFIGS = {
     },
     "day_trader": {
         "starting_capital": STARTING_CAPITAL,
+        "max_invested_pct": 0.90,
         "max_daily_risk_pct": 0.03,
         "max_per_trade_pct": 0.12,
         "max_concurrent_positions": 10,
