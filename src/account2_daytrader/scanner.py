@@ -171,8 +171,14 @@ class Scanner:
 
                 for symbol in batch:
                     try:
-                        symbol_bars = bars_data.get(symbol) if bars_data else None
-                        snap = snapshots.get(symbol) if snapshots else None
+                        try:
+                            symbol_bars = bars_data[symbol] if bars_data else None
+                        except (KeyError, TypeError):
+                            symbol_bars = None
+                        try:
+                            snap = snapshots[symbol] if snapshots else None
+                        except (KeyError, TypeError):
+                            snap = None
 
                         if symbol_bars:
                             bars_found += 1
