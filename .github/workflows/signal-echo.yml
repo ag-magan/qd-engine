@@ -1,22 +1,29 @@
-name: Process C
+name: Process D
 
 on:
   schedule:
-    - cron: '0 15 * * 1-5'     # 10 AM ET — decision (+ guardian)
-    - cron: '0 18 * * 1-5'     # 1 PM ET  — monitor (+ guardian)
-    - cron: '30 21 * * 1-5'    # 4:30 PM ET — eod (+ guardian)
+    # Morning open: 9:35 AM ET (EST = UTC-5)
+    - cron: '35 14 * * 1-5'
+    # Midday check: 12:30 PM ET
+    - cron: '30 17 * * 1-5'
+    # EOD close: 3:50 PM ET
+    - cron: '50 20 * * 1-5'
   workflow_dispatch:
     inputs:
       mode:
-        description: 'Mode'
-        required: false
-        default: 'decision'
+        description: 'Run mode'
+        required: true
+        default: 'morning'
+        type: choice
+        options:
+          - morning
+          - midday
+          - eod
 
 jobs:
   run:
-    if: false  # Shelved — Signal Echo (Process D) now uses Account 3
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 15
 
     steps:
       - uses: actions/checkout@v4
@@ -35,14 +42,14 @@ jobs:
             echo "mode=${{ github.event.inputs.mode }}" >> $GITHUB_OUTPUT
           else
             HOUR=$(date -u +%H)
-            if [ "$HOUR" = "15" ]; then
-              echo "mode=decision" >> $GITHUB_OUTPUT
-            elif [ "$HOUR" = "18" ]; then
-              echo "mode=monitor" >> $GITHUB_OUTPUT
-            elif [ "$HOUR" = "21" ] || [ "$HOUR" = "22" ]; then
+            if [ "$HOUR" = "14" ]; then
+              echo "mode=morning" >> $GITHUB_OUTPUT
+            elif [ "$HOUR" = "17" ]; then
+              echo "mode=midday" >> $GITHUB_OUTPUT
+            elif [ "$HOUR" = "20" ]; then
               echo "mode=eod" >> $GITHUB_OUTPUT
             else
-              echo "mode=guardian" >> $GITHUB_OUTPUT
+              echo "mode=morning" >> $GITHUB_OUTPUT
             fi
           fi
 
@@ -50,10 +57,9 @@ jobs:
         env:
           ALPACA_ACCT3_PAPER_KEY: ${{ secrets.ALPACA_ACCT3_PAPER_KEY }}
           ALPACA_ACCT3_PAPER_SECRET: ${{ secrets.ALPACA_ACCT3_PAPER_SECRET }}
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
           GMAIL_ADDRESS: ${{ secrets.GMAIL_ADDRESS }}
           GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
           TRADING_MODE: paper
-        run: python -m src.account3_autonomous.main ${{ steps.mode.outputs.mode }}
+        run: python -m src.account3_signal_echo.main ${{ steps.mode.outputs.mode }}

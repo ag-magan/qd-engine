@@ -20,6 +20,10 @@ ALPACA_ACCOUNTS = {
         "key": os.getenv("ALPACA_ACCT3_PAPER_KEY", ""),
         "secret": os.getenv("ALPACA_ACCT3_PAPER_SECRET", ""),
     },
+    "signal_echo": {
+        "key": os.getenv("ALPACA_ACCT3_PAPER_KEY", ""),
+        "secret": os.getenv("ALPACA_ACCT3_PAPER_SECRET", ""),
+    },
 }
 
 # QuiverQuant
@@ -76,6 +80,15 @@ ACCOUNT_CONFIGS = {
         "min_holding_hours": 6,
         "max_holding_days": 30,
         "min_confidence": 50,
+    },
+    "signal_echo": {
+        "starting_capital": STARTING_CAPITAL,
+        "max_invested_pct": 0.85,
+        "max_position_pct": 0.15,
+        "max_positions": 12,
+        "max_trades_per_day": 20,
+        "max_daily_risk_pct": 0.03,
+        "min_composite_score": 15,
     },
 }
 

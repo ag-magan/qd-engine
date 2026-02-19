@@ -58,7 +58,7 @@ Respond with ONLY a valid JSON object:
     ]
 }"""
 
-ACCOUNT_IDS = ["quiver_strat", "day_trader", "autonomous"]
+ACCOUNT_IDS = ["quiver_strat", "day_trader", "signal_echo"]
 
 
 def run_weekly_review():

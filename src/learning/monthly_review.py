@@ -35,7 +35,7 @@ Respond with ONLY a valid JSON object:
     "strategy_recommendations": {
         "quiver_strat": ["<rec 1>"],
         "day_trader": ["<rec 1>"],
-        "autonomous": ["<rec 1>"]
+        "signal_echo": ["<rec 1>"]
     },
     "risk_assessment": {
         "overall_risk_level": "low" | "moderate" | "high" | "critical",
@@ -53,7 +53,7 @@ Respond with ONLY a valid JSON object:
     ]
 }"""
 
-ACCOUNT_IDS = ["quiver_strat", "day_trader", "autonomous"]
+ACCOUNT_IDS = ["quiver_strat", "day_trader", "signal_echo"]
 
 
 def run_monthly_review():

@@ -9,7 +9,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-ACCOUNT_IDS = ["quiver_strat", "day_trader", "autonomous"]
+ACCOUNT_IDS = ["quiver_strat", "day_trader", "signal_echo"]
 
 
 def run_daily_snapshot():

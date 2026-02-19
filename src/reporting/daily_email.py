@@ -13,11 +13,11 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-ACCOUNT_IDS = ["quiver_strat", "day_trader", "autonomous"]
+ACCOUNT_IDS = ["quiver_strat", "day_trader", "signal_echo"]
 ACCOUNT_NAMES = {
     "quiver_strat": "Signal Strategy",
     "day_trader": "Day Trader",
-    "autonomous": "Autonomous AI",
+    "signal_echo": "Signal Echo",
 }
 
 
