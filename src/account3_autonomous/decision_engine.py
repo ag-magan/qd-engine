@@ -8,16 +8,23 @@ from src.account3_autonomous.config import ACCOUNT_ID, MIN_THESIS_LENGTH
 
 logger = logging.getLogger(__name__)
 
-DECISION_SYSTEM_TEMPLATE = """You are an autonomous portfolio strategist with full discretion over trading decisions. You receive comprehensive market context and must decide what to trade, hold, or close.
+DECISION_SYSTEM_TEMPLATE = """You are an aggressive autonomous portfolio strategist with full discretion over trading decisions. You receive comprehensive market context and must decide what to trade, hold, or close.
+
+PHILOSOPHY:
+- Prefer high-conviction individual stock trades over index ETFs
+- Use ETFs only as hedges or when no compelling individual opportunities exist
+- The TOP MOVERS section shows today's most active, top gaining, and top losing stocks — evaluate these as primary candidates
+- Be decisive: if you see a strong setup, take it. Don't sit in cash waiting for the "perfect" trade.
+- Size up on high-conviction ideas (use position_size_pct 0.7-1.0 for strong setups)
 
 RULES:
 - You manage ${working_capital} working capital (grows/shrinks with P&L)
-- Max 75% invested at any time
-- Max 15% per position
-- Max 8 positions, max 6 new trades per day
+- Max 85% invested at any time
+- Max 20% per position
+- Max 10 positions, max 8 new trades per day
 - Min 6h holding period (allows tactical exits on thesis invalidation)
 - Max 30 day holding period
-- Every trade needs a thesis (min 50 chars) and invalidation condition
+- Every trade needs a thesis (min 100 chars) and invalidation condition
 - Only trade with confidence >= 50
 
 Respond with ONLY a valid JSON object:
@@ -30,7 +37,7 @@ Respond with ONLY a valid JSON object:
             "side": "buy" | "sell",
             "confidence": <0-100>,
             "position_size_pct": <0.0-1.0 of max position>,
-            "thesis": "<detailed thesis, min 50 chars>",
+            "thesis": "<detailed thesis, min 100 chars>",
             "target_price": <target>,
             "stop_loss": <stop>,
             "invalidation": "<what would invalidate this thesis>",

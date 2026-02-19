@@ -29,28 +29,32 @@ class MarketBriefing:
         market_overview = self._get_market_overview()
         sections.append(f"## MARKET OVERVIEW\n{market_overview}")
 
-        # 2. Current portfolio
+        # 2. Top movers — individual stock candidates
+        movers = self._get_top_movers()
+        sections.append(f"## TOP MOVERS (Individual Stock Candidates)\n{movers}")
+
+        # 3. Current portfolio
         portfolio = self._get_portfolio_state()
         sections.append(f"## CURRENT PORTFOLIO\n{portfolio}")
 
-        # 3. Performance metrics
+        # 4. Performance metrics
         metrics = self.tracker.get_performance_metrics()
         metrics_text = self._format_metrics(metrics)
         sections.append(f"## PERFORMANCE METRICS\n{metrics_text}")
 
-        # 4. Trade history
+        # 5. Trade history
         history = self._get_trade_history()
         sections.append(f"## RECENT TRADE HISTORY\n{history}")
 
-        # 5. Thesis accuracy
+        # 6. Thesis accuracy
         thesis_stats = self._get_thesis_stats()
         sections.append(f"## THESIS ACCURACY\n{thesis_stats}")
 
-        # 6. Active learnings
+        # 7. Active learnings
         learnings = self._get_learnings()
         sections.append(f"## ACCUMULATED LEARNINGS\n{learnings}")
 
-        # 7. Open theses to review
+        # 8. Open theses to review
         open_theses = self._get_open_theses()
         sections.append(f"## OPEN POSITIONS & THESES\n{open_theses}")
 
@@ -76,6 +80,44 @@ class MarketBriefing:
         except Exception as e:
             logger.error(f"Failed to get market overview: {e}")
             return "Market data unavailable."
+
+    def _get_top_movers(self) -> str:
+        """Get top movers from Alpaca screener as individual stock candidates."""
+        try:
+            movers = self.alpaca.get_screener_movers(top=20)
+            all_symbols = set()
+            for key in ("most_actives", "gainers", "losers"):
+                for sym in movers.get(key, []):
+                    all_symbols.add(sym)
+
+            if not all_symbols:
+                return "  Screener data unavailable."
+
+            # Get snapshots for price/change data
+            symbols_list = list(all_symbols)[:30]
+            snapshots = self.alpaca.get_snapshots(symbols_list)
+
+            lines = []
+            for category, label in [("gainers", "TOP GAINERS"), ("losers", "TOP LOSERS"), ("most_actives", "MOST ACTIVE")]:
+                syms = movers.get(category, [])[:10]
+                if not syms:
+                    continue
+                lines.append(f"  {label}:")
+                for sym in syms:
+                    snap = snapshots.get(sym) if snapshots else None
+                    if snap and snap.latest_trade and snap.previous_daily_bar:
+                        price = float(snap.latest_trade.price)
+                        prev = float(snap.previous_daily_bar.close)
+                        change = ((price - prev) / prev) * 100
+                        vol = int(snap.daily_bar.volume) if snap.daily_bar else 0
+                        lines.append(f"    {sym}: ${price:.2f} ({change:+.2f}%) vol={vol:,}")
+                    else:
+                        lines.append(f"    {sym}: (data unavailable)")
+
+            return "\n".join(lines) if lines else "  No movers data."
+        except Exception as e:
+            logger.error(f"Failed to get top movers: {e}")
+            return "  Screener data unavailable."
 
     def _get_portfolio_state(self) -> str:
         """Get current portfolio positions and cash."""

@@ -90,6 +90,14 @@ class AlpacaClient:
         """Get market clock."""
         return self.trading.get_clock()
 
+    def get_order(self, order_id: str):
+        """Get order details by ID (for fill price/status sync)."""
+        try:
+            return self.trading.get_order_by_id(order_id)
+        except Exception as e:
+            logger.error(f"Failed to get order {order_id}: {e}")
+            return None
+
     def submit_market_order(
         self,
         symbol: str,

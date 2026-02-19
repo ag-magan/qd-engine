@@ -1,4 +1,5 @@
 import logging
+import time
 from datetime import datetime, timezone
 
 import pytz
@@ -73,6 +74,21 @@ class DayTraderExecutor:
             "reasoning": setup.get("reasoning", ""),
         }
         db_trade = self.db.insert_trade(trade_record)
+
+        # Sync fill status — market orders fill near-instantly
+        if db_trade:
+            try:
+                time.sleep(1)
+                order_info = self.alpaca.get_order(str(order.id))
+                if order_info and "filled" in str(order_info.status).lower():
+                    self.db.update_trade(db_trade["id"], {
+                        "status": "filled",
+                        "fill_price": float(order_info.filled_avg_price),
+                        "filled_at": str(order_info.filled_at),
+                    })
+                    logger.info(f"Order filled: {symbol} @ ${float(order_info.filled_avg_price):.2f}")
+            except Exception as e:
+                logger.warning(f"Order sync failed for {symbol} (non-fatal): {e}")
 
         logger.info(
             f"Day trade executed: {side} {symbol} ${position_size:.2f} "

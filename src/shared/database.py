@@ -114,7 +114,9 @@ class Database:
                 self.client.table("trades")
                 .select("*")
                 .eq("account_id", account_id)
-                .in_("status", ["submitted", "filled", "partially_filled"])
+                .in_("status", ["submitted", "filled", "partially_filled",
+                                "OrderStatus.PENDING_NEW", "OrderStatus.ACCEPTED",
+                                "OrderStatus.NEW", "pending_new"])
                 .execute()
             )
             return resp.data

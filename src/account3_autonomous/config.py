@@ -6,7 +6,7 @@ MIDDAY_MONITOR = "13:00"
 EOD_REVIEW = "16:30"
 
 # Position constraints
-MIN_THESIS_LENGTH = 50  # Characters
+MIN_THESIS_LENGTH = 100  # Characters
 MIN_CONFIDENCE = 50
 
 # Thesis classification labels
