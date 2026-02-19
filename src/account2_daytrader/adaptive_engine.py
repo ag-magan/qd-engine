@@ -98,7 +98,7 @@ class AdaptiveEngine:
         flags = []
 
         # Revenge trading: quick trades after losses
-        recent = sorted(outcomes[:10], key=lambda x: x.get("entry_date", ""))
+        recent = sorted(outcomes[:10], key=lambda x: x.get("entry_date") or "")
         consecutive_losses = 0
         for o in reversed(recent):
             if float(o.get("realized_pnl", 0) or 0) < 0:
@@ -178,7 +178,7 @@ class AdaptiveEngine:
     def should_cooldown(self) -> bool:
         """Check if trading should pause due to behavioral flags."""
         outcomes = self.db.get_trade_outcomes(ACCOUNT_ID, limit=10)
-        outcomes.sort(key=lambda o: o.get("exit_date", ""), reverse=True)
+        outcomes.sort(key=lambda o: o.get("exit_date") or "", reverse=True)
         consecutive_losses = 0
         for o in outcomes:
             if float(o.get("realized_pnl", 0) or 0) < 0:
