@@ -47,6 +47,17 @@ class BaseStrategy(ABC):
         """
         pass
 
+    def apply_catalyst_boost(self, setup: dict, candidate: dict) -> dict:
+        """Boost confidence if the candidate has QuiverQuant catalyst data."""
+        boost = candidate.get("catalyst_boost", 0)
+        if boost and setup:
+            setup["confidence"] = min(setup["confidence"] + boost, 95)
+            sources = ", ".join(candidate.get("catalyst_sources", []))
+            setup["reasoning"] += f" [CATALYST: {sources} boost=+{boost}]"
+            setup["has_catalyst"] = True
+            setup["catalyst_score"] = candidate.get("catalyst_score", 0)
+        return setup
+
     def calculate_target(self, entry: float, target_pct: float, side: str) -> float:
         if side == "buy":
             return round(entry * (1 + target_pct / 100), 2)

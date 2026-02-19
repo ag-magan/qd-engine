@@ -46,7 +46,7 @@ class GapFill(BaseStrategy):
         # Larger gaps = higher confidence (to a point)
         confidence = min(50 + int(abs(gap_pct) * 5), 85)
 
-        return {
+        setup = {
             "symbol": candidate["symbol"],
             "side": side,
             "entry_price": current_price,
@@ -61,3 +61,4 @@ class GapFill(BaseStrategy):
                 f"targeting {config['target_fill_pct']}% fill"
             ),
         }
+        return self.apply_catalyst_boost(setup, candidate)

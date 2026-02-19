@@ -100,11 +100,11 @@ class TestDayTraderRisk(unittest.TestCase):
         can, pnl = self.risk.check_daily_loss_limit()
         self.assertTrue(can)
 
-    def test_max_trades_per_day(self):
-        self.mock_db.get_todays_trades.return_value = [{}] * 20
+    def test_no_trade_limit(self):
+        """Day trader has no max_trades_per_day — always allowed."""
+        self.mock_db.get_todays_trades.return_value = [{}] * 100
         can, count = self.risk.check_max_trades_per_day()
-        self.assertFalse(can)
-        self.assertEqual(count, 20)
+        self.assertTrue(can)
 
 
 if __name__ == "__main__":

@@ -47,7 +47,7 @@ class MeanReversion(BaseStrategy):
             confidence = min(50 + int((rsi - config.get("rsi_overbought", 70)) * 2), 85)
             condition = f"overbought RSI {rsi:.1f}"
 
-        return {
+        setup = {
             "symbol": candidate["symbol"],
             "side": side,
             "entry_price": entry,
@@ -62,3 +62,4 @@ class MeanReversion(BaseStrategy):
                 f"volume {volume_ratio:.1f}x avg"
             ),
         }
+        return self.apply_catalyst_boost(setup, candidate)

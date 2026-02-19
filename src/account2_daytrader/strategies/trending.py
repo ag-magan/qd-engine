@@ -45,7 +45,7 @@ class TrendFollowing(BaseStrategy):
 
         direction = "uptrend" if is_long else "downtrend"
         sma_rel = "SMA10 > SMA20" if is_long else "SMA10 < SMA20"
-        return {
+        setup = {
             "symbol": candidate["symbol"],
             "side": side,
             "entry_price": entry,
@@ -60,3 +60,4 @@ class TrendFollowing(BaseStrategy):
                 f"volume {volume_ratio:.1f}x, RSI {candidate.get('rsi', 'N/A')}"
             ),
         }
+        return self.apply_catalyst_boost(setup, candidate)

@@ -37,7 +37,7 @@ class MomentumBreakout(BaseStrategy):
         confidence = min(50 + int(volume_ratio * 10), 90)
 
         direction = "breakout" if is_long else "breakdown"
-        return {
+        setup = {
             "symbol": candidate["symbol"],
             "side": side,
             "entry_price": entry,
@@ -52,3 +52,4 @@ class MomentumBreakout(BaseStrategy):
                 f"RSI {candidate.get('rsi', 'N/A')}"
             ),
         }
+        return self.apply_catalyst_boost(setup, candidate)

@@ -8,6 +8,7 @@ import requests
 import pytz
 
 from src.shared.alpaca_client import AlpacaClient
+from src.shared.database import Database
 from src.account2_daytrader.config import ACCOUNT_ID, SCANNER, STRATEGIES
 from src.account2_daytrader.universe import SCAN_UNIVERSE
 
@@ -26,6 +27,47 @@ class Scanner:
 
     def __init__(self):
         self.alpaca = AlpacaClient(ACCOUNT_ID)
+        self.db = Database()
+        self._quiver_context: dict = {}  # symbol → catalyst metadata
+
+    def _fetch_quiver_signals(self) -> list:
+        """Fetch QuiverQuant-identified symbols from Account A's signals table."""
+        try:
+            signals = self.db.get_quiver_signals()
+            if not signals:
+                logger.info("QuiverQuant signals: 0 symbols")
+                return []
+
+            symbols = []
+            for sig in signals:
+                sym = sig["symbol"]
+                symbols.append(sym)
+                self._quiver_context[sym] = {
+                    "composite_score": sig["composite_score"],
+                    "sources": sig["sources"],
+                    "signal_types": sig.get("signal_types", []),
+                    "source_count": sig["source_count"],
+                    "direction": sig.get("direction", "buy"),
+                }
+
+            logger.info(f"QuiverQuant signals: {len(symbols)} symbols")
+            return symbols
+        except Exception as e:
+            logger.warning(f"QuiverQuant signal fetch failed (non-fatal): {e}")
+            return []
+
+    def _get_catalyst_context(self, symbol: str) -> dict:
+        """Return catalyst metadata for a symbol if QuiverQuant data exists."""
+        ctx = self._quiver_context.get(symbol)
+        if not ctx:
+            return {}
+        return {
+            "has_catalyst": True,
+            "catalyst_score": ctx["composite_score"],
+            "catalyst_sources": ctx["sources"],
+            "catalyst_types": ctx.get("signal_types", []),
+            "catalyst_direction": ctx.get("direction", "buy"),
+        }
 
     def _fetch_dynamic_movers(self) -> list:
         """Fetch dynamic pre-market movers from Alpaca screener + Yahoo Finance.
@@ -73,11 +115,12 @@ class Scanner:
         """Scan for stocks with significant pre-market gaps and volume."""
         logger.info("Running pre-market scan...")
 
-        # Merge static universe with dynamic movers
+        # Merge: QuiverQuant first (catalyst-backed), then static, then dynamic
+        quiver = self._fetch_quiver_signals()
         dynamic = self._fetch_dynamic_movers()
-        combined = list(dict.fromkeys(SCAN_UNIVERSE + dynamic))  # dedup, preserve order
+        combined = list(dict.fromkeys(quiver + SCAN_UNIVERSE + dynamic))  # dedup, preserve order
         logger.info(
-            f"Scan universe: {len(SCAN_UNIVERSE)} static + "
+            f"Scan universe: {len(quiver)} quiver + {len(SCAN_UNIVERSE)} static + "
             f"{len(dynamic)} dynamic = {len(combined)} unique symbols"
         )
 
@@ -133,7 +176,7 @@ class Scanner:
             if abs(gap_pct) < SCANNER["min_gap_pct"] and vol_ratio < SCANNER["min_volume_multiplier"]:
                 return None
 
-            return {
+            result = {
                 "symbol": symbol,
                 "current_price": current_price,
                 "prev_close": prev_close,
@@ -142,12 +185,16 @@ class Scanner:
                 "has_gap": abs(gap_pct) >= SCANNER["min_gap_pct"],
                 "has_volume": vol_ratio >= SCANNER["min_volume_multiplier"],
             }
+            result.update(self._get_catalyst_context(symbol))
+            return result
         except Exception as e:
             logger.debug(f"Error evaluating {symbol}: {e}")
             return None
 
     def intraday_scan(self, watchlist: list = None) -> list:
         """Scan for intraday setups on watchlist or full universe."""
+        if not self._quiver_context:
+            self._fetch_quiver_signals()
         symbols = watchlist or SCAN_UNIVERSE[:50]
         candidates = []
 
@@ -308,7 +355,7 @@ class Scanner:
             f"vwap_dist={vwap_dist:.2f}% setups={setups}"
         )
 
-        return {
+        result = {
             "symbol": symbol,
             "current_price": current_price,
             "vwap": round(vwap, 2),
@@ -319,6 +366,18 @@ class Scanner:
             "setups": setups,
             "prev_close": prev_close,
         }
+        catalyst = self._get_catalyst_context(symbol)
+        if catalyst:
+            result.update(catalyst)
+            # Compute catalyst boost based on composite score
+            score = catalyst.get("catalyst_score", 0)
+            if score >= 1000:
+                result["catalyst_boost"] = 10
+            elif score >= 100:
+                result["catalyst_boost"] = 7
+            else:
+                result["catalyst_boost"] = 5
+        return result
 
     @staticmethod
     def _calculate_rsi(closes: list, period: int = 14) -> float:

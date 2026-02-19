@@ -245,11 +245,14 @@ def run_loop():
                     and (now - last_watchlist_refresh).total_seconds() >= WATCHLIST_REFRESH_SECONDS):
                 try:
                     refresh_scanner = Scanner()
+                    quiver_syms = refresh_scanner._fetch_quiver_signals()
                     new_movers = refresh_scanner._fetch_dynamic_movers()
-                    added = [s for s in new_movers if s not in watchlist]
+                    fresh = quiver_syms + new_movers
+                    added = [s for s in fresh if s not in watchlist]
                     if added:
                         watchlist.extend(added)
-                        logger.info(f"Watchlist refresh: added {len(added)} mid-day movers")
+                        logger.info(f"Watchlist refresh: added {len(added)} symbols "
+                                    f"({len(quiver_syms)} quiver, {len(new_movers)} dynamic)")
                 except Exception as e:
                     logger.warning(f"Watchlist refresh failed: {e}")
                 last_watchlist_refresh = now

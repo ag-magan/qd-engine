@@ -53,12 +53,16 @@ class DayTraderClaudeAnalyzer:
         # Build context
         candidates_summary = ""
         for c in candidates[:30]:  # Show Claude up to 30 candidates
-            candidates_summary += (
+            line = (
                 f"  {c['symbol']}: gap={c.get('gap_pct', 'N/A')}%, "
                 f"vol_ratio={c.get('volume_ratio', 'N/A')}, "
                 f"price=${c.get('current_price', 'N/A')}, "
-                f"setups={c.get('setups', [])}\n"
+                f"setups={c.get('setups', [])}"
             )
+            if c.get("has_catalyst"):
+                sources = ", ".join(c.get("catalyst_sources", []))
+                line += f" [CATALYST: {sources} (score={c.get('catalyst_score', 0)})]"
+            candidates_summary += line + "\n"
 
         recent_performance = ""
         if outcomes:
@@ -115,7 +119,12 @@ Analyze these candidates and provide your pre-market briefing as JSON."""
             f"Stop: ${setup['stop_price']} ({setup.get('stop_pct', 'N/A')}%)\n"
             f"Market outlook: {market_context.get('market_outlook', 'unknown')}\n"
             f"Strategy bias: {market_context.get('strategy_bias', 'none')}\n"
-            f"\nShould we take this trade?"
         )
+        if setup.get("has_catalyst"):
+            prompt += (
+                f"Catalyst: QuiverQuant signal (score={setup.get('catalyst_score', 0)}) — "
+                f"this stock has a fundamental catalyst from government/political data\n"
+            )
+        prompt += "\nShould we take this trade?"
 
         return self.claude.quick_decision(prompt, model="haiku") or {}

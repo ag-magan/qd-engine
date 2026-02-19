@@ -85,6 +85,63 @@ class Database:
                 logger.error(f"Failed to insert signal batch ({len(batch)} signals): {e}")
         return saved
 
+    # --- QuiverQuant Signals (cross-account read) ---
+
+    def get_quiver_signals(self, since_hours: int = 24, min_score: float = 15) -> list:
+        """Fetch recent QuiverQuant signals from Account A's pipeline.
+
+        Reads the signals table (populated by quiver_strat) and aggregates
+        by symbol. Returns symbols sorted by composite score descending.
+        """
+        try:
+            from datetime import timedelta, timezone
+            cutoff = (datetime.now(timezone.utc) - timedelta(hours=since_hours)).isoformat()
+            resp = (
+                self.client.table("signals")
+                .select("symbol,source,signal_type,direction,strength,composite_score")
+                .eq("account_id", "quiver_strat")
+                .gte("created_at", cutoff)
+                .gte("composite_score", min_score)
+                .neq("signal_role", "confirmation_only")
+                .order("composite_score", desc=True)
+                .limit(500)
+                .execute()
+            )
+            if not resp.data:
+                return []
+
+            # Aggregate by symbol
+            by_symbol = {}
+            for row in resp.data:
+                sym = row["symbol"]
+                if sym not in by_symbol:
+                    by_symbol[sym] = {
+                        "symbol": sym,
+                        "composite_score": float(row.get("composite_score") or 0),
+                        "sources": [],
+                        "signal_types": [],
+                        "direction": row.get("direction", "buy"),
+                    }
+                entry = by_symbol[sym]
+                src = row.get("source", "")
+                if src and src not in entry["sources"]:
+                    entry["sources"].append(src)
+                sig_type = row.get("signal_type", "")
+                if sig_type and sig_type not in entry["signal_types"]:
+                    entry["signal_types"].append(sig_type)
+                # Keep highest composite score
+                score = float(row.get("composite_score") or 0)
+                if score > entry["composite_score"]:
+                    entry["composite_score"] = score
+
+            result = sorted(by_symbol.values(), key=lambda x: x["composite_score"], reverse=True)
+            for r in result:
+                r["source_count"] = len(r["sources"])
+            return result
+        except Exception as e:
+            logger.error(f"Failed to get quiver signals: {e}")
+            return []
+
     # --- Trades ---
 
     def insert_trade(self, trade: dict) -> Optional[dict]:

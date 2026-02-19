@@ -6,7 +6,6 @@ from src.shared.database import Database
 from src.account2_daytrader.config import (
     ACCOUNT_ID,
     MAX_CONSECUTIVE_LOSSES_BEFORE_COOLDOWN,
-    OVERTRADING_THRESHOLD,
 )
 
 logger = logging.getLogger(__name__)
@@ -95,17 +94,8 @@ class AdaptiveEngine:
         return stats
 
     def _detect_behavioral_issues(self, todays_trades: list, outcomes: list) -> list:
-        """Detect overtrading and revenge trading patterns."""
+        """Detect revenge trading and rapid-fire patterns."""
         flags = []
-
-        # Overtrading detection
-        if len(todays_trades) > OVERTRADING_THRESHOLD:
-            flags.append({
-                "type": "overtrading",
-                "message": f"Executed {len(todays_trades)} trades today "
-                          f"(threshold: {OVERTRADING_THRESHOLD})",
-                "severity": "warning",
-            })
 
         # Revenge trading: quick trades after losses
         recent = sorted(outcomes[:10], key=lambda x: x.get("entry_date", ""))

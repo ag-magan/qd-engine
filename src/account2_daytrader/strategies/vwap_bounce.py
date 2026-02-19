@@ -46,7 +46,7 @@ class VWAPBounce(BaseStrategy):
 
         direction = "bounce" if is_long else "rejection"
         position = "above" if vwap_dist > 0 else "below"
-        return {
+        setup = {
             "symbol": candidate["symbol"],
             "side": side,
             "entry_price": entry,
@@ -61,3 +61,4 @@ class VWAPBounce(BaseStrategy):
                 f"volume {candidate.get('volume_ratio', 'N/A')}x"
             ),
         }
+        return self.apply_catalyst_boost(setup, candidate)

@@ -62,7 +62,6 @@ ACCOUNT_CONFIGS = {
         "max_daily_risk_pct": 0.03,
         "max_per_trade_pct": 0.12,
         "max_concurrent_positions": 10,
-        "max_trades_per_day": 20,
         "no_new_trades_after": "15:30",
         "force_close_at": "15:50",
         "skip_first_minutes": 5,
