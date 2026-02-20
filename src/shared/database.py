@@ -334,16 +334,16 @@ class Database:
             logger.error(f"Failed to get snapshots: {e}")
             return []
 
-    def get_latest_snapshot(self, account_id: str) -> Optional[dict]:
+    def get_latest_snapshot(self, account_id: str, before_date: str = None) -> Optional[dict]:
         try:
-            resp = (
+            q = (
                 self.client.table("portfolio_snapshots")
                 .select("*")
                 .eq("account_id", account_id)
-                .order("snapshot_date", desc=True)
-                .limit(1)
-                .execute()
             )
+            if before_date:
+                q = q.lt("snapshot_date", before_date)
+            resp = q.order("snapshot_date", desc=True).limit(1).execute()
             return resp.data[0] if resp.data else None
         except Exception as e:
             logger.error(f"Failed to get latest snapshot: {e}")

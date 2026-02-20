@@ -50,9 +50,10 @@ class PortfolioTracker:
             cash = round(alpaca_cash - PAPER_RESERVE, 2)
             total_pnl = equity - STARTING_CAPITAL
 
-            # Daily P&L: compare to yesterday's snapshot
+            # Daily P&L: compare to yesterday's snapshot (exclude today)
             daily_pnl = 0.0
-            prev = self.db.get_latest_snapshot(self.account_id)
+            today = date.today().isoformat()
+            prev = self.db.get_latest_snapshot(self.account_id, before_date=today)
             if prev:
                 prev_equity = float(prev.get("equity", STARTING_CAPITAL))
                 daily_pnl = round(equity - prev_equity, 2)
