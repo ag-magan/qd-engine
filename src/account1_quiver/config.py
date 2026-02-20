@@ -93,3 +93,10 @@ SIGNAL_MAX_AGE_HOURS = 48
 DEFAULT_STOP_LOSS_PCT = 8.0
 DEFAULT_TARGET_RETURN_PCT = 15.0
 DEFAULT_TIME_HORIZON_DAYS = 30
+
+# Position upgrade / rotation — displace underperformers for high-confidence signals
+UPGRADE_MIN_CONFIDENCE = 75        # Incoming signal must have >= 75 confidence
+UPGRADE_MIN_HOLD_HOURS = 48        # Position must be held >= 48h before displacement
+UPGRADE_MAX_LOSS_PCT = -3.0        # Only displace positions losing >= 3%
+UPGRADE_CONFIDENCE_ADVANTAGE = 15  # New signal must beat retention score by 15 pts
+UPGRADE_MAX_PER_CYCLE = 1          # Max 1 displacement per execution cycle

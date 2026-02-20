@@ -9,6 +9,8 @@ from src.shared.database import Database
 from src.account1_quiver.config import (
     ACCOUNT_ID, SIGNAL_MAX_AGE_HOURS,
     DEFAULT_STOP_LOSS_PCT, DEFAULT_TARGET_RETURN_PCT, DEFAULT_TIME_HORIZON_DAYS,
+    UPGRADE_MIN_CONFIDENCE, UPGRADE_MIN_HOLD_HOURS, UPGRADE_MAX_LOSS_PCT,
+    UPGRADE_CONFIDENCE_ADVANTAGE, UPGRADE_MAX_PER_CYCLE,
 )
 
 logger = logging.getLogger(__name__)
@@ -23,6 +25,7 @@ class Executor:
         self.alpaca = AlpacaClient(ACCOUNT_ID)
         self.risk = RiskManager(ACCOUNT_ID)
         self.db = Database()
+        self._upgrades_this_cycle = 0
 
     def execute_signals(self, analyzed_signals: list) -> list:
         """Execute trades for signals that pass all checks.
@@ -164,10 +167,21 @@ class Executor:
         # Risk check
         can_trade, reason = self.risk.can_open_position(symbol, position_size)
         if not can_trade:
+            if "Would exceed max invested" in reason or "Max positions reached" in reason:
+                upgrade_result = self._attempt_position_upgrade(signal, position_size)
+                if upgrade_result:
+                    return upgrade_result
             self._record_skip(signal, reason)
             return None
 
-        # Submit order
+        return self._submit_and_record(signal, position_size)
+
+    def _submit_and_record(self, signal: dict, position_size: float) -> dict:
+        """Submit a market order and record the trade in DB."""
+        symbol = signal["symbol"]
+        direction = signal.get("decision", signal.get("direction", "buy"))
+        confidence = signal.get("confidence", 50)
+
         order = self.alpaca.submit_market_order(
             symbol=symbol,
             side=direction,
@@ -178,7 +192,6 @@ class Executor:
             self._record_skip(signal, "Order submission failed")
             return None
 
-        # Record trade in DB
         trade_record = {
             "account_id": ACCOUNT_ID,
             "symbol": symbol,
@@ -196,7 +209,6 @@ class Executor:
         }
         db_trade = self.db.insert_trade(trade_record)
 
-        # Sync fill status — market orders fill near-instantly
         if db_trade:
             try:
                 time.sleep(1)
@@ -223,6 +235,120 @@ class Executor:
             "side": direction,
             "notional": position_size,
         }
+
+    def _find_displacement_candidate(self, new_signal: dict, position_size: float):
+        """Find the worst-performing position eligible for displacement.
+
+        Returns (position, trade, retention_score) or (None, None, None).
+        """
+        positions = self.alpaca.get_positions()
+        open_trades = self.db.get_open_trades(ACCOUNT_ID)
+
+        candidates = []
+        for pos in positions:
+            symbol = pos.symbol
+            trade = next((t for t in open_trades if t["symbol"] == symbol), None)
+            if not trade:
+                continue
+
+            # Check hold duration
+            if not trade.get("created_at"):
+                continue
+            entry_time = datetime.fromisoformat(
+                str(trade["created_at"]).replace("Z", "+00:00")
+            )
+            hours_held = (datetime.now(timezone.utc) - entry_time).total_seconds() / 3600
+            if hours_held < UPGRADE_MIN_HOLD_HOURS:
+                continue
+
+            # Check P&L threshold
+            pnl_pct = float(pos.unrealized_plpc) * 100
+            if pnl_pct > UPGRADE_MAX_LOSS_PCT:
+                continue
+
+            # Compute retention score: lower = weaker = better candidate for displacement
+            horizon_days = int(trade["time_horizon_days"]) if trade.get("time_horizon_days") else DEFAULT_TIME_HORIZON_DAYS
+            days_held = hours_held / 24
+            time_remaining_ratio = max(0, (horizon_days - days_held) / horizon_days)
+            retention_score = pnl_pct + (time_remaining_ratio * 5)
+
+            candidates.append((pos, trade, retention_score))
+            logger.info(
+                f"Upgrade candidate: {symbol} pnl={pnl_pct:.1f}% "
+                f"held={hours_held:.0f}h retention={retention_score:.1f}"
+            )
+
+        if not candidates:
+            return None, None, None
+
+        # Return worst candidate (lowest retention score)
+        candidates.sort(key=lambda x: x[2])
+        return candidates[0]
+
+    def _attempt_position_upgrade(self, signal: dict, position_size: float) -> dict:
+        """Try to displace an underperformer for a high-confidence signal.
+
+        Returns result dict on success, None on failure.
+        """
+        symbol = signal["symbol"]
+        confidence = signal.get("confidence", 50)
+
+        # Gate 1: Minimum confidence
+        if confidence < UPGRADE_MIN_CONFIDENCE:
+            logger.info(
+                f"Upgrade skip {symbol}: confidence {confidence} < {UPGRADE_MIN_CONFIDENCE}"
+            )
+            return None
+
+        # Gate 2: Per-cycle limit
+        if self._upgrades_this_cycle >= UPGRADE_MAX_PER_CYCLE:
+            logger.info(f"Upgrade skip {symbol}: cycle limit reached ({UPGRADE_MAX_PER_CYCLE})")
+            return None
+
+        # Gate 3: Find displacement candidate
+        worst_pos, worst_trade, retention_score = self._find_displacement_candidate(signal, position_size)
+        if worst_pos is None:
+            logger.info(f"Upgrade skip {symbol}: no eligible displacement candidates")
+            return None
+
+        # Gate 4: Confidence must significantly beat retention
+        normalized_retention = 50 + (retention_score * 3)
+        required_confidence = normalized_retention + UPGRADE_CONFIDENCE_ADVANTAGE
+        if confidence < required_confidence:
+            logger.info(
+                f"Upgrade skip {symbol}: confidence {confidence} < "
+                f"required {required_confidence:.0f} "
+                f"(retention={retention_score:.1f}, normalized={normalized_retention:.0f})"
+            )
+            return None
+
+        # All gates passed — execute displacement
+        displaced_symbol = worst_pos.symbol
+        logger.info(
+            f"POSITION UPGRADE: closing {displaced_symbol} "
+            f"(retention={retention_score:.1f}) to open {symbol} "
+            f"(confidence={confidence})"
+        )
+
+        self._close_and_record(worst_pos, worst_trade, "displaced")
+
+        # Re-check risk after closing — capital should be freed
+        can_trade, reason = self.risk.can_open_position(symbol, position_size)
+        if not can_trade:
+            logger.warning(
+                f"Upgrade failed for {symbol}: still blocked after closing "
+                f"{displaced_symbol}: {reason}"
+            )
+            return None
+
+        result = self._submit_and_record(signal, position_size)
+        if result:
+            self._upgrades_this_cycle += 1
+            logger.info(
+                f"POSITION UPGRADE COMPLETE: {displaced_symbol} -> {symbol} "
+                f"(upgrades this cycle: {self._upgrades_this_cycle})"
+            )
+        return result
 
     def _record_skip(self, signal: dict, reason: str) -> None:
         """Record a skipped signal in the database."""
