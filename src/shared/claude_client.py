@@ -131,6 +131,18 @@ class ClaudeClient:
                     )
                     _time.sleep(wait)
                     continue
+                # Fallback: Sonnet overloaded → try Haiku
+                if "overloaded" in str(e).lower() and model == "sonnet":
+                    logger.warning("Sonnet exhausted retries, falling back to Haiku")
+                    return self.analyze(
+                        system_prompt=system_prompt,
+                        user_prompt=user_prompt,
+                        model="haiku",
+                        analysis_type=analysis_type,
+                        expect_json=expect_json,
+                        max_tokens=max_tokens,
+                        thinking=False,
+                    )
                 logger.error(f"Claude API call failed ({model_id}): {e}")
                 return None
             except Exception as e:

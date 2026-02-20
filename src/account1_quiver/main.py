@@ -97,16 +97,32 @@ def run():
         # Step 5: Claude analyzes top signals
         analyzer = ClaudeAnalyzer()
         approved_signals = []
+        consecutive_failures = 0
+        MAX_CONSECUTIVE_FAILURES = 3
 
         for scored in scored_signals[:20]:  # Analyze top 20 at most
+            if consecutive_failures >= MAX_CONSECUTIVE_FAILURES:
+                logger.warning(
+                    f"Circuit breaker: {consecutive_failures} consecutive Claude failures, "
+                    f"skipping remaining signals"
+                )
+                tracker.add_warning(
+                    f"Claude circuit breaker tripped after {consecutive_failures} failures",
+                    service="Claude",
+                )
+                break
+
             try:
                 analysis = analyzer.analyze_signal(scored, portfolio_state)
                 if not analysis:
+                    consecutive_failures += 1
                     tracker.add_warning(
                         f"Claude returned empty analysis for {scored['symbol']}",
                         service="Claude",
                     )
                     continue
+
+                consecutive_failures = 0  # Reset on success
 
                 confidence = analysis.get("confidence", 0)
                 decision = analysis.get("decision", "skip")

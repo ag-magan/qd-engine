@@ -2,10 +2,10 @@ name: Process A Exit Check
 
 on:
   schedule:
-    - cron: '0 16 * * 1-5'     # 11 AM ET
-    - cron: '0 17 * * 1-5'     # 12 PM ET
-    - cron: '0 19 * * 1-5'     # 2 PM ET
-    - cron: '0 20 * * 1-5'     # 3 PM ET
+    - cron: '0,30 14-20 * * 1-5'  # Every 30 min, 9 AM – 3:30 PM ET
+    - cron: '45 20 * * 1-5'       # 3:45 PM ET (near close)
+    - cron: '0 21-23 * * 1-5'     # Hourly: 4 PM, 5 PM, 6 PM ET
+    - cron: '0 0-1 * * 2-6'       # Hourly: 7 PM, 8 PM ET (after-hours)
   workflow_dispatch:
 
 jobs:
