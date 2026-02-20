@@ -1,0 +1,34 @@
+name: Process B Exit Check
+
+on:
+  schedule:
+    - cron: '0,30 15-20 * * 1-5'  # Every 30 min, 10 AM – 3:30 PM ET
+    - cron: '55 20 * * 1-5'       # 3:55 PM ET (force close safety net)
+    - cron: '0 21 * * 1-5'        # 4 PM ET (post-close safety)
+  workflow_dispatch:
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install
+        run: pip install -r requirements.txt
+
+      - name: Exit Check
+        env:
+          ALPACA_ACCT2_PAPER_KEY: ${{ secrets.ALPACA_ACCT2_PAPER_KEY }}
+          ALPACA_ACCT2_PAPER_SECRET: ${{ secrets.ALPACA_ACCT2_PAPER_SECRET }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+          GMAIL_ADDRESS: ${{ secrets.GMAIL_ADDRESS }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          TRADING_MODE: paper
+        run: python -m src.account2_daytrader.main exit_check

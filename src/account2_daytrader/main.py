@@ -240,6 +240,15 @@ def run_loop():
         while get_et_now() < force_close_time:
             now = get_et_now()
 
+            # Always manage existing positions FIRST — stops/targets checked
+            # before the potentially-long intraday scan cycle
+            try:
+                actions = executor.manage_positions()
+                if actions:
+                    logger.info(f"Position management: {actions}")
+            except Exception as e:
+                tracker.add_warning(f"Position management error: {e}", service="Alpaca")
+
             # Refresh watchlist with mid-day movers periodically
             if (now < no_new_trades_time
                     and (now - last_watchlist_refresh).total_seconds() >= WATCHLIST_REFRESH_SECONDS):
@@ -263,14 +272,6 @@ def run_loop():
                     run_intraday_cycle(watchlist, market_context, executor, strategies)
                 except Exception as e:
                     tracker.add_warning(f"Intraday cycle error: {e}", service="Scanner")
-
-            # Always manage existing positions
-            try:
-                actions = executor.manage_positions()
-                if actions:
-                    logger.info(f"Position management: {actions}")
-            except Exception as e:
-                tracker.add_warning(f"Position management error: {e}", service="Alpaca")
 
             # Sleep until next scan
             time.sleep(scan_interval)
@@ -298,6 +299,38 @@ def run_loop():
         tracker.finalize()
 
 
+def run_exit_check():
+    """Lightweight exit check — manages positions and force-closes at EOD.
+
+    Safety net that runs independently of the main loop, so positions
+    never go unmanaged even if the loop crashes or blocks on Claude.
+    """
+    tracker = HealthTracker("day-trader-exit-check", ACCOUNT_ID)
+    try:
+        logger.info("=== Day Trader: Exit Check ===")
+        executor = DayTraderExecutor()
+        now = get_et_now()
+        force_close_time = time_str_to_today(FORCE_CLOSE)
+
+        if now >= force_close_time:
+            closed = executor.force_close_all()
+            logger.info(f"Exit check (EOD): force-closed {len(closed)} positions")
+        else:
+            actions = executor.manage_positions()
+            if actions:
+                logger.info(f"Exit check: {actions}")
+            else:
+                logger.info("Exit check: all positions within bounds")
+
+        logger.info("=== Day Trader: Exit Check Complete ===")
+
+    except Exception as e:
+        tracker.add_error("System", f"Exit check error: {e}", "Exit check failed")
+        logger.exception("Fatal error in day trader exit check")
+    finally:
+        tracker.finalize()
+
+
 def run():
     """Entry point with mode selection."""
     mode = sys.argv[1] if len(sys.argv) > 1 else "loop"
@@ -310,6 +343,8 @@ def run():
         run_intraday_cycle([], {}, executor, strategies)
     elif mode == "eod":
         run_eod()
+    elif mode == "exit_check":
+        run_exit_check()
     elif mode == "loop":
         run_loop()
     else:

@@ -125,10 +125,35 @@ def _send_daily_summary(closed: list) -> None:
     send_email(f"Signal Echo \u2014 {today} \u2014 {pnl_sign}${total_pnl:.2f}", body)
 
 
+def run_manage():
+    """Manage positions only — trailing stop checks.
+
+    Fills the gap between morning open and midday check so positions
+    aren't left unmanaged for hours.
+    """
+    tracker = HealthTracker("signal-echo-manage", ACCOUNT_ID)
+    try:
+        logger.info("=== Signal Echo: Position Management ===")
+        executor = SignalEchoExecutor()
+        actions = executor.manage_positions()
+        logger.info(f"Manage: {len(actions)} stop actions")
+        logger.info("=== Signal Echo: Position Management Complete ===")
+    except Exception as e:
+        tracker.add_error("System", str(e), "Position management failed")
+        logger.exception("Fatal error in Signal Echo position management")
+    finally:
+        tracker.finalize()
+
+
 def run():
     """Entry point with mode selection."""
     mode = sys.argv[1] if len(sys.argv) > 1 else "morning"
-    modes = {"morning": run_morning, "midday": run_midday, "eod": run_eod}
+    modes = {
+        "morning": run_morning,
+        "midday": run_midday,
+        "eod": run_eod,
+        "manage": run_manage,
+    }
 
     if mode not in modes:
         logger.error(f"Unknown mode: {mode}. Valid: {list(modes.keys())}")

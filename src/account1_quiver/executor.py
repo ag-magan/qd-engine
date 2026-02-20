@@ -244,10 +244,15 @@ class Executor:
         positions = self.alpaca.get_positions()
         open_trades = self.db.get_open_trades(ACCOUNT_ID)
 
+        # Index trades by symbol, keeping the most recent per symbol
+        trades_by_symbol = {}
+        for t in sorted(open_trades, key=lambda x: x.get("created_at", "")):
+            trades_by_symbol[t["symbol"]] = t
+
         candidates = []
         for pos in positions:
             symbol = pos.symbol
-            trade = next((t for t in open_trades if t["symbol"] == symbol), None)
+            trade = trades_by_symbol.get(symbol)
             if not trade:
                 continue
 
@@ -373,9 +378,14 @@ class Executor:
         open_trades = self.db.get_open_trades(ACCOUNT_ID)
         closed = []
 
+        # Index trades by symbol, keeping the most recent per symbol
+        trades_by_symbol = {}
+        for t in sorted(open_trades, key=lambda x: x.get("created_at", "")):
+            trades_by_symbol[t["symbol"]] = t
+
         for pos in positions:
             symbol = pos.symbol
-            trade = next((t for t in open_trades if t["symbol"] == symbol), None)
+            trade = trades_by_symbol.get(symbol)
             if not trade:
                 continue
 

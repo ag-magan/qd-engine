@@ -107,14 +107,17 @@ class DayTraderExecutor:
         open_trades = self.db.get_open_trades(ACCOUNT_ID)
         actions = []
 
+        # Index trades by symbol, keeping the most recent per symbol
+        # so we match against the current position, not a stale one
+        trades_by_symbol = {}
+        for t in sorted(open_trades, key=lambda x: x.get("created_at", "")):
+            trades_by_symbol[t["symbol"]] = t
+
         for pos in positions:
             symbol = pos.symbol
             unrealized_pnl_pct = float(pos.unrealized_plpc) * 100
 
-            trade = next(
-                (t for t in open_trades if t["symbol"] == symbol),
-                None,
-            )
+            trade = trades_by_symbol.get(symbol)
             if not trade:
                 continue
 
@@ -184,10 +187,13 @@ class DayTraderExecutor:
         closed = []
 
         trades = self.db.get_open_trades(ACCOUNT_ID)
+        trades_by_symbol = {}
+        for t in sorted(trades, key=lambda x: x.get("created_at", "")):
+            trades_by_symbol[t["symbol"]] = t
 
         for pos in positions:
             symbol = pos.symbol
-            trade = next((t for t in trades if t["symbol"] == symbol), None)
+            trade = trades_by_symbol.get(symbol)
 
             self._close_and_record(pos, trade, "eod_close")
             closed.append(symbol)

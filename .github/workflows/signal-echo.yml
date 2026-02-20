@@ -4,8 +4,16 @@ on:
   schedule:
     # Morning open: 10:35 AM ET — right after Process A's 10 AM signal run
     - cron: '35 15 * * 1-5'
+    # Manage stops: 11:35 AM ET
+    - cron: '35 16 * * 1-5'
+    # Manage stops: 12:35 PM ET
+    - cron: '35 17 * * 1-5'
     # Midday check: 1:35 PM ET — catches Process A's 1 PM signals + manage stops
     - cron: '35 18 * * 1-5'
+    # Manage stops: 2:35 PM ET
+    - cron: '35 19 * * 1-5'
+    # Manage stops: 3:20 PM ET (pre-EOD)
+    - cron: '20 20 * * 1-5'
     # EOD close: 3:50 PM ET
     - cron: '50 20 * * 1-5'
   workflow_dispatch:
@@ -19,6 +27,7 @@ on:
           - morning
           - midday
           - eod
+          - manage
 
 jobs:
   run:
@@ -42,14 +51,15 @@ jobs:
             echo "mode=${{ github.event.inputs.mode }}" >> $GITHUB_OUTPUT
           else
             HOUR=$(date -u +%H)
+            MIN=$(date -u +%M)
             if [ "$HOUR" = "15" ]; then
               echo "mode=morning" >> $GITHUB_OUTPUT
             elif [ "$HOUR" = "18" ]; then
               echo "mode=midday" >> $GITHUB_OUTPUT
-            elif [ "$HOUR" = "20" ]; then
+            elif [ "$HOUR" = "20" ] && [ "$MIN" -ge "40" ]; then
               echo "mode=eod" >> $GITHUB_OUTPUT
             else
-              echo "mode=morning" >> $GITHUB_OUTPUT
+              echo "mode=manage" >> $GITHUB_OUTPUT
             fi
           fi
 
