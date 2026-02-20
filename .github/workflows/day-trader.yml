@@ -4,6 +4,16 @@ on:
   schedule:
     - cron: '30 13 * * 1-5'
   workflow_dispatch:
+    inputs:
+      mode:
+        description: 'Run mode'
+        required: true
+        default: 'loop'
+        type: choice
+        options:
+          - loop
+          - eod
+          - exit_check
 
 jobs:
   run:
@@ -30,4 +40,4 @@ jobs:
           GMAIL_ADDRESS: ${{ secrets.GMAIL_ADDRESS }}
           GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
           TRADING_MODE: paper
-        run: python -m src.account2_daytrader.main loop
+        run: python -m src.account2_daytrader.main ${{ github.event.inputs.mode || 'loop' }}
