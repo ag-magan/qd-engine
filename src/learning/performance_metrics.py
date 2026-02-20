@@ -3,7 +3,7 @@ from collections import defaultdict
 
 import numpy as np
 
-from src.shared.config import STARTING_CAPITAL
+from src.shared.config import STARTING_CAPITAL, DATA_START_DATE
 from src.shared.database import Database
 
 logger = logging.getLogger(__name__)
@@ -12,8 +12,8 @@ logger = logging.getLogger(__name__)
 def calculate_metrics(account_id: str) -> dict:
     """Calculate comprehensive performance metrics for an account."""
     db = Database()
-    outcomes = db.get_trade_outcomes(account_id, limit=10000)
-    snapshots = db.get_snapshots(account_id, limit=365)
+    outcomes = db.get_trade_outcomes(account_id, limit=10000, since=DATA_START_DATE)
+    snapshots = db.get_snapshots(account_id, limit=365, since=DATA_START_DATE)
 
     metrics = {
         "account_id": account_id,

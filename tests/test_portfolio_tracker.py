@@ -2,7 +2,7 @@ import unittest
 from unittest.mock import patch, MagicMock
 
 from src.shared.portfolio_tracker import PortfolioTracker
-from src.shared.config import STARTING_CAPITAL
+from src.shared.config import STARTING_CAPITAL, PAPER_RESERVE
 
 
 class TestPortfolioTracker(unittest.TestCase):
@@ -17,6 +17,11 @@ class TestPortfolioTracker(unittest.TestCase):
         self.mock_db.get_snapshots.return_value = []
         self.mock_db.upsert_snapshot.return_value = {}
         self.mock_alpaca.get_positions.return_value = []
+        # Default: $100k paper account, no P&L
+        mock_account = MagicMock()
+        mock_account.equity = str(PAPER_RESERVE + STARTING_CAPITAL)
+        mock_account.cash = str(PAPER_RESERVE + STARTING_CAPITAL)
+        self.mock_alpaca.get_account.return_value = mock_account
         self.tracker = PortfolioTracker("quiver_strat")
         self.tracker.db = self.mock_db
         self.tracker.alpaca = self.mock_alpaca
@@ -28,9 +33,11 @@ class TestPortfolioTracker(unittest.TestCase):
         self.assertEqual(snapshot["total_pnl"], 0)
 
     def test_snapshot_with_gains(self):
-        self.mock_db.get_trade_outcomes.return_value = [
-            {"realized_pnl": 500},
-        ]
+        # Simulate $500 realized gains in the Alpaca account
+        mock_account = MagicMock()
+        mock_account.equity = str(PAPER_RESERVE + STARTING_CAPITAL + 500)
+        mock_account.cash = str(PAPER_RESERVE + STARTING_CAPITAL + 500)
+        self.mock_alpaca.get_account.return_value = mock_account
         snapshot = self.tracker.take_snapshot()
         self.assertEqual(snapshot["equity"], STARTING_CAPITAL + 500)
 

@@ -212,16 +212,16 @@ class Database:
             logger.error(f"Failed to insert trade outcome: {e}")
             return None
 
-    def get_trade_outcomes(self, account_id: str, limit: int = 50) -> list:
+    def get_trade_outcomes(self, account_id: str, limit: int = 50, since: str = None) -> list:
         try:
-            resp = (
+            q = (
                 self.client.table("trade_outcomes")
                 .select("*")
                 .eq("account_id", account_id)
-                .order("created_at", desc=True)
-                .limit(limit)
-                .execute()
             )
+            if since:
+                q = q.gte("exit_date", since)
+            resp = q.order("created_at", desc=True).limit(limit).execute()
             return resp.data
         except Exception as e:
             logger.error(f"Failed to get trade outcomes: {e}")
@@ -319,16 +319,16 @@ class Database:
             logger.error(f"Failed to upsert snapshot: {e}")
             return None
 
-    def get_snapshots(self, account_id: str, limit: int = 30) -> list:
+    def get_snapshots(self, account_id: str, limit: int = 30, since: str = None) -> list:
         try:
-            resp = (
+            q = (
                 self.client.table("portfolio_snapshots")
                 .select("*")
                 .eq("account_id", account_id)
-                .order("snapshot_date", desc=True)
-                .limit(limit)
-                .execute()
             )
+            if since:
+                q = q.gte("snapshot_date", since)
+            resp = q.order("snapshot_date", desc=True).limit(limit).execute()
             return resp.data
         except Exception as e:
             logger.error(f"Failed to get snapshots: {e}")

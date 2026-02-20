@@ -49,6 +49,10 @@ GMAIL_APP_PASSWORD = os.getenv("GMAIL_APP_PASSWORD", "")
 
 # Capital isolation: each account uses exactly $10,000
 STARTING_CAPITAL = 10_000
+PAPER_RESERVE = 90_000  # Paper accounts start at $100k; we only trade $10k
+
+# Reviews and self-improve ignore data before this date (pre-March is testing)
+DATA_START_DATE = "2026-03-01"
 
 # Account-specific configuration
 ACCOUNT_CONFIGS = {
