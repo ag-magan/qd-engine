@@ -3,6 +3,7 @@ ACCOUNT_ID = "signal_echo"
 # Signal reading
 SIGNAL_LOOKBACK_HOURS = 24
 MIN_COMPOSITE_SCORE = 15
+MIN_CLAUDE_CONFIDENCE = 55  # Only open signals Claude approved on Process A
 
 # Time windows (Eastern Time)
 NO_NEW_TRADES = "15:30"

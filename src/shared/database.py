@@ -87,7 +87,8 @@ class Database:
 
     # --- QuiverQuant Signals (cross-account read) ---
 
-    def get_quiver_signals(self, since_hours: int = 24, min_score: float = 15) -> list:
+    def get_quiver_signals(self, since_hours: int = 24, min_score: float = 15,
+                           min_confidence: float = None) -> list:
         """Fetch recent QuiverQuant signals from Account A's pipeline.
 
         Reads the signals table (populated by quiver_strat) and aggregates
@@ -96,13 +97,18 @@ class Database:
         try:
             from datetime import timedelta, timezone
             cutoff = (datetime.now(timezone.utc) - timedelta(hours=since_hours)).isoformat()
-            resp = (
+            query = (
                 self.client.table("signals")
                 .select("symbol,source,signal_type,direction,strength,composite_score")
                 .eq("account_id", "quiver_strat")
                 .gte("created_at", cutoff)
                 .gte("composite_score", min_score)
                 .neq("signal_role", "confirmation_only")
+            )
+            if min_confidence is not None:
+                query = query.gte("confidence", min_confidence)
+            resp = (
+                query
                 .order("composite_score", desc=True)
                 .limit(500)
                 .execute()
