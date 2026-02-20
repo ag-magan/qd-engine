@@ -4,7 +4,6 @@ on:
   schedule:
     - cron: '0,30 15-20 * * 1-5'  # Every 30 min, 10 AM – 3:30 PM ET
     - cron: '55 20 * * 1-5'       # 3:55 PM ET (force close safety net)
-    - cron: '0 21 * * 1-5'        # 4 PM ET (post-close safety)
   workflow_dispatch:
 
 jobs:

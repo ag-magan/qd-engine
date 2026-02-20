@@ -374,6 +374,10 @@ class Executor:
         2. Hit their target return percentage
         3. Exceeded their time horizon
         """
+        if not self.alpaca.is_market_open():
+            logger.info("Exit check: market closed, skipping")
+            return []
+
         positions = self.alpaca.get_positions()
         open_trades = self.db.get_open_trades(ACCOUNT_ID)
         closed = []
